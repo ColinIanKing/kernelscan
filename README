@@ -1,0 +1,10 @@
+kernelscan
+
+This tool (ripped out of fwts and hacked around a bit) scans the kernel
+for various message printing functions such as printk so that they can
+be sanity checked for spelling mistakes etc..
+
+Run:
+
+make
+./kernelscan.sh path-to-kernel-source-tree
