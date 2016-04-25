@@ -16,6 +16,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 
+CFLAGS += -O2
+
 kernelscan: kernelscan.o
 	$(CC) $< -o $@
 
