@@ -76,7 +76,100 @@ typedef struct {
 	get_stack *get_chars;	/* Ungot chars get pushed onto this */
 } parser;
 
+static unsigned int hash_size;
+
+static char *funcs[] = {
+	"printk",
+	"printf",
+	"early_printk",
+	"vprintk_emit",
+	"vprintk",
+	"printk_emit",
+	"printk_once",
+	"printk_deferred",
+	"printk_deferred_once",
+	"pr_emerg",
+	"pr_alert",
+	"pr_crit",
+	"pr_err",
+	"pr_warning",
+	"pr_warn",
+	"pr_notice",
+	"pr_info",
+	"pr_cont",
+	"pr_devel",
+	"pr_debug",
+	"pr_emerg_once",
+	"pr_alert_once",
+	"pr_crit_once",
+	"pr_err_once",
+	"pr_warning_once",
+	"pr_warn_once",
+	"pr_notice_once",
+	"pr_info_once",
+	"pr_cont_once",
+	"pr_devel_once",
+	"pr_debug_once",
+	"dynamic_pr_debug",
+	"dev_vprintk_emit",
+	"dev_printk_emit",
+	"dev_printk",
+	"dev_emerg",
+	"dev_alert",
+	"dev_crit",
+	"dev_err",
+	"dev_warn",
+	"dev_dbg",
+	"dev_notice",
+	"dev_level_once",
+	"dev_emerg_once",
+	"dev_alert_once",
+	"dev_crit_once",
+	"dev_err_once",
+	"dev_warn_once",
+	"dev_notice_once",
+	"dev_info_once",
+	"dev_dbg_once",
+	"dev_level_ratelimited",
+	"dev_emerg_ratelimited",
+	"dev_alert_ratelimited",
+	"dev_crit_ratelimited",
+	"dev_err_ratelimited",
+	"dev_warn_ratelimited",
+	"dev_notice_ratelimited",
+	"dev_info_ratelimited",
+	"dbg",
+	"ACPI_ERROR",
+	"ACPI_INFO",
+	"ACPI_WARNING",
+	"ACPI_EXCEPTION",
+	"ACPI_BIOS_WARNING",
+	"ACPI_BIOS_ERROR",
+	"ACPI_ERROR_METHOD",
+	"ACPI_DEBUG_PRINT",
+	"ACPI_DEBUG_PRINT_RAW",
+	"DEBUG",
+	NULL
+};
+
+#define TABLE_SIZE	(5000)
+
+static char *hash_funcs[TABLE_SIZE];
+
 static int get_token(parser *p, token *t);
+
+static unsigned int djb2a(const char *str)
+{
+        unsigned int hash = 5381;
+        unsigned int c;
+
+        while ((c = *str++)) {
+                /* (hash * 33) ^ c */
+                hash = ((hash << 5) + hash) ^ c;
+        }
+        return hash;
+}
+
 
 /*
  *  Initialise the parser
@@ -673,80 +766,6 @@ static int parse_kernel_message(parser *p, token *t)
 	free(line);
 }
 
-static const char *funcs[] = {
-	"printk",
-	"printf",
-	"early_printk",
-	"vprintk_emit",
-	"vprintk",
-	"printk_emit",
-	"printk_once",
-	"printk_deferred",
-	"printk_deferred_once",
-	"pr_emerg",
-	"pr_alert",
-	"pr_crit",
-	"pr_err",
-	"pr_warning",
-	"pr_warn",
-	"pr_notice",
-	"pr_info",
-	"pr_cont",
-	"pr_devel",
-	"pr_debug",
-	"pr_emerg_once",
-	"pr_alert_once",
-	"pr_crit_once",
-	"pr_err_once",
-	"pr_warning_once",
-	"pr_warn_once",
-	"pr_notice_once",
-	"pr_info_once",
-	"pr_cont_once",
-	"pr_devel_once",
-	"pr_debug_once",
-	"dynamic_pr_debug",
-	"dev_vprintk_emit",
-	"dev_printk_emit",
-	"dev_printk",
-	"dev_emerg",
-	"dev_alert",
-	"dev_crit",
-	"dev_err",
-	"dev_warn",
-	"dev_dbg",
-	"dev_notice",
-	"dev_level_once",
-	"dev_emerg_once",
-	"dev_alert_once",
-	"dev_crit_once",
-	"dev_err_once",
-	"dev_warn_once",
-	"dev_notice_once",
-	"dev_info_once",
-	"dev_dbg_once",
-	"dev_level_ratelimited",
-	"dev_emerg_ratelimited",
-	"dev_alert_ratelimited",
-	"dev_crit_ratelimited",
-	"dev_err_ratelimited",
-	"dev_warn_ratelimited",
-	"dev_notice_ratelimited",
-	"dev_info_ratelimited",
-	"dbg",
-	"ACPI_ERROR",
-	"ACPI_INFO",
-	"ACPI_WARNING",
-	"ACPI_EXCEPTION",
-	"ACPI_BIOS_WARNING",
-	"ACPI_BIOS_ERROR",
-	"ACPI_ERROR_METHOD",
-	"ACPI_DEBUG_PRINT",
-	"ACPI_DEBUG_PRINT_RAW",
-	"DEBUG",
-	NULL
-};
-
 /*
  *  Parse input looking for printk or dev_err calls
  */
@@ -764,15 +783,10 @@ static void parse_kernel_messages(FILE *fp)
 	while ((get_token(&p, &t)) != EOF) {
 		size_t i;
 		bool found = false;
+		unsigned int h = djb2a(t.token) % hash_size;
+		char *hf = hash_funcs[h];
 
-		for (i = 0; funcs[i]; i++) {
-			if (!strcmp(t.token, funcs[i])) {
-				found = true;
-				break;
-			}
-		}
-
-		if (found)
+		if (hf && !strcmp(t.token, hf))
 			parse_kernel_message(&p, &t);
 		else
 			token_clear(&t);
@@ -882,6 +896,31 @@ static int parse_cpp_includes(FILE *fp)
  */
 int main(int argc, char **argv)
 {
+	size_t i, j;
+
+	/* Find optimal hash table size */
+	for (hash_size = 50; hash_size < TABLE_SIZE; hash_size++) {
+		bool collision = false;
+
+		memset(hash_funcs, 0, sizeof(hash_funcs));
+
+		for (i = 0; funcs[i]; i++) {
+			unsigned int h = djb2a(funcs[i]) % hash_size;
+
+			if (hash_funcs[h]) {
+				collision = true;
+				break;
+			}
+			hash_funcs[h] = funcs[i];
+		}
+		if (!collision)
+			break;
+	}
+	if (hash_size == TABLE_SIZE) {
+		fprintf(stderr, "Increase TABLE_SIZE for hash table\n");
+		exit(EXIT_FAILURE);
+	}
+
 	parse_kernel_messages(stdin);
 	exit(EXIT_SUCCESS);
 }
