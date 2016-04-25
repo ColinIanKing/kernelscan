@@ -604,6 +604,22 @@ static int parse_kernel_message(parser *p, token *t)
 
 	line = strdupcat(line, t->token);
 	token_clear(t);
+	if (get_token(p, t) == EOF) {
+		free(line);
+		return EOF;
+	}
+	if (t->type != TOKEN_PAREN_OPENED) {
+		free(line);
+		for (;;) {
+			if (get_token(p, t) == EOF)
+				return EOF;
+			if (t->type == TOKEN_TERMINAL)
+				break;
+		}
+		return PARSER_OK;
+	}
+	line = strdupcat(line, t->token);
+	token_clear(t);
 
 	for (;;) {
 		int ret = get_token(p, t);
@@ -647,12 +663,6 @@ static int parse_kernel_message(parser *p, token *t)
 		}
 
 		line = strdupcat(line, t->token);
-
-/*
-		if (t->type == TOKEN_IDENTIFIER && prev_token_type != TOKEN_COMMA)
-			line = strdupcat(line, " ");
-*/
-
 		if (t->type == TOKEN_COMMA)
 			line = strdupcat(line, " ");
 
@@ -662,6 +672,80 @@ static int parse_kernel_message(parser *p, token *t)
 	}
 	free(line);
 }
+
+static const char *funcs[] = {
+	"printk",
+	"printf",
+	"early_printk",
+	"vprintk_emit",
+	"vprintk",
+	"printk_emit",
+	"printk_once",
+	"printk_deferred",
+	"printk_deferred_once",
+	"pr_emerg",
+	"pr_alert",
+	"pr_crit",
+	"pr_err",
+	"pr_warning",
+	"pr_warn",
+	"pr_notice",
+	"pr_info",
+	"pr_cont",
+	"pr_devel",
+	"pr_debug",
+	"pr_emerg_once",
+	"pr_alert_once",
+	"pr_crit_once",
+	"pr_err_once",
+	"pr_warning_once",
+	"pr_warn_once",
+	"pr_notice_once",
+	"pr_info_once",
+	"pr_cont_once",
+	"pr_devel_once",
+	"pr_debug_once",
+	"dynamic_pr_debug",
+	"dev_vprintk_emit",
+	"dev_printk_emit",
+	"dev_printk",
+	"dev_emerg",
+	"dev_alert",
+	"dev_crit",
+	"dev_err",
+	"dev_warn",
+	"dev_dbg",
+	"dev_notice",
+	"dev_level_once",
+	"dev_emerg_once",
+	"dev_alert_once",
+	"dev_crit_once",
+	"dev_err_once",
+	"dev_warn_once",
+	"dev_notice_once",
+	"dev_info_once",
+	"dev_dbg_once",
+	"dev_level_ratelimited",
+	"dev_emerg_ratelimited",
+	"dev_alert_ratelimited",
+	"dev_crit_ratelimited",
+	"dev_err_ratelimited",
+	"dev_warn_ratelimited",
+	"dev_notice_ratelimited",
+	"dev_info_ratelimited",
+	"dbg",
+	"ACPI_ERROR",
+	"ACPI_INFO",
+	"ACPI_WARNING",
+	"ACPI_EXCEPTION",
+	"ACPI_BIOS_WARNING",
+	"ACPI_BIOS_ERROR",
+	"ACPI_ERROR_METHOD",
+	"ACPI_DEBUG_PRINT",
+	"ACPI_DEBUG_PRINT_RAW",
+	"DEBUG",
+	NULL
+};
 
 /*
  *  Parse input looking for printk or dev_err calls
@@ -678,77 +762,19 @@ static void parse_kernel_messages(FILE *fp)
 	token_new(&t);
 
 	while ((get_token(&p, &t)) != EOF) {
-		if ((strcmp(t.token, "printk") == 0) ||
-		    (strcmp(t.token, "printf") == 0) ||
-		    (strcmp(t.token, "early_printk") == 0) ||
-		    (strcmp(t.token, "vprintk_emit") == 0) ||
-		    (strcmp(t.token, "vprintk") == 0) ||
-		    (strcmp(t.token, "printk_emit") == 0) ||
-		    (strcmp(t.token, "printk_once") == 0) ||
-		    (strcmp(t.token, "printk_deferred") == 0) ||
-		    (strcmp(t.token, "printk_deferred_once") == 0) ||
-		    (strcmp(t.token, "pr_emerg") == 0) ||
-		    (strcmp(t.token, "pr_alert") == 0) ||
-		    (strcmp(t.token, "pr_crit") == 0) ||
-		    (strcmp(t.token, "pr_err") == 0) ||
-		    (strcmp(t.token, "pr_warning") == 0) ||
-		    (strcmp(t.token, "pr_warn") == 0) ||
-		    (strcmp(t.token, "pr_notice") == 0) ||
-		    (strcmp(t.token, "pr_info") == 0) ||
-		    (strcmp(t.token, "pr_cont") == 0) ||
-		    (strcmp(t.token, "pr_devel") == 0) ||
-		    (strcmp(t.token, "pr_debug") == 0) ||
-		    (strcmp(t.token, "pr_emerg_once") == 0) ||
-		    (strcmp(t.token, "pr_alert_once") == 0) ||
-		    (strcmp(t.token, "pr_crit_once") == 0) ||
-		    (strcmp(t.token, "pr_err_once") == 0) ||
-		    (strcmp(t.token, "pr_warning_once") == 0) ||
-		    (strcmp(t.token, "pr_warn_once") == 0) ||
-		    (strcmp(t.token, "pr_notice_once") == 0) ||
-		    (strcmp(t.token, "pr_info_once") == 0) ||
-		    (strcmp(t.token, "pr_cont_once") == 0) ||
-		    (strcmp(t.token, "pr_devel_once") == 0) ||
-		    (strcmp(t.token, "pr_debug_once") == 0) ||
-		    (strcmp(t.token, "dynamic_pr_debug") == 0) ||
-		    (strcmp(t.token, "dev_vprintk_emit") == 0) ||
-		    (strcmp(t.token, "dev_printk_emit") == 0) ||
-		    (strcmp(t.token, "dev_printk") == 0) ||
-		    (strcmp(t.token, "dev_emerg") == 0) ||
-		    (strcmp(t.token, "dev_alert") == 0) ||
-		    (strcmp(t.token, "dev_crit") == 0) ||
-		    (strcmp(t.token, "dev_err") == 0) ||
-		    (strcmp(t.token, "dev_warn") == 0) ||
-		    (strcmp(t.token, "dev_dbg") == 0) ||
-		    (strcmp(t.token, "dev_notice") == 0) ||
-		    (strcmp(t.token, "dev_level_once") == 0) ||
-		    (strcmp(t.token, "dev_emerg_once") == 0) ||
-		    (strcmp(t.token, "dev_alert_once") == 0) ||
-		    (strcmp(t.token, "dev_crit_once") == 0) ||
-		    (strcmp(t.token, "dev_err_once") == 0) ||
-		    (strcmp(t.token, "dev_warn_once") == 0) ||
-		    (strcmp(t.token, "dev_notice_once") == 0) ||
-		    (strcmp(t.token, "dev_info_once") == 0) ||
-		    (strcmp(t.token, "dev_dbg_once") == 0) ||
-		    (strcmp(t.token, "dev_level_ratelimited") == 0) ||
-		    (strcmp(t.token, "dev_emerg_ratelimited") == 0) ||
-		    (strcmp(t.token, "dev_alert_ratelimited") == 0) ||
-		    (strcmp(t.token, "dev_crit_ratelimited") == 0) ||
-		    (strcmp(t.token, "dev_err_ratelimited") == 0) ||
-		    (strcmp(t.token, "dev_warn_ratelimited") == 0) ||
-		    (strcmp(t.token, "dev_notice_ratelimited") == 0) ||
-		    (strcmp(t.token, "dev_info_ratelimited") == 0) ||
-		    (strcmp(t.token, "dbg") == 0) ||
-		    (strcmp(t.token, "ACPI_ERROR") == 0) ||
-		    (strcmp(t.token, "ACPI_INFO") == 0) ||
-		    (strcmp(t.token, "ACPI_WARNING") == 0) ||
-		    (strcmp(t.token, "ACPI_EXCEPTION") == 0) ||
-		    (strcmp(t.token, "ACPI_BIOS_WARNING") == 0) ||
-		    (strcmp(t.token, "ACPI_BIOS_ERROR") == 0) ||
-		    (strcmp(t.token, "ACPI_ERROR_METHOD") == 0) ||
-		    (strcmp(t.token, "ACPI_DEBUG_PRINT") == 0) ||
-		    (strcmp(t.token, "ACPI_DEBUG_PRINT_RAW") == 0)) {
+		size_t i;
+		bool found = false;
+
+		for (i = 0; funcs[i]; i++) {
+			if (!strcmp(t.token, funcs[i])) {
+				found = true;
+				break;
+			}
+		}
+
+		if (found)
 			parse_kernel_message(&p, &t);
-		} else
+		else
 			token_clear(&t);
 	}
 
