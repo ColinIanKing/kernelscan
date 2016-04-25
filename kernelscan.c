@@ -158,7 +158,7 @@ static char *hash_funcs[TABLE_SIZE];
 
 static int get_token(parser *p, token *t);
 
-static unsigned int djb2a(const char *str)
+static inline unsigned int djb2a(const char *str)
 {
         unsigned int hash = 5381;
         unsigned int c;
@@ -691,7 +691,6 @@ static int parse_kernel_message(parser *p, token *t)
 	bool got_string = false;
 	bool emit = false;
 	bool found = false;
-	token_type prev_token_type = TOKEN_UNKNOWN;
 	char *str = NULL;
 	char *line = NULL;
 
@@ -759,8 +758,6 @@ static int parse_kernel_message(parser *p, token *t)
 		if (t->type == TOKEN_COMMA)
 			line = strdupcat(line, " ");
 
-		prev_token_type = t->type;
-
 		token_clear(t);
 	}
 	free(line);
@@ -781,8 +778,6 @@ static void parse_kernel_messages(FILE *fp)
 	token_new(&t);
 
 	while ((get_token(&p, &t)) != EOF) {
-		size_t i;
-		bool found = false;
 		unsigned int h = djb2a(t.token) % hash_size;
 		char *hf = hash_funcs[h];
 
@@ -793,92 +788,6 @@ static void parse_kernel_messages(FILE *fp)
 	}
 
 	token_free(&t);
-}
-
-/*
- *  This is evil.  We parse the input stream
- *  and throw away all #includes so we don't get
- *  gcc -E breaking on include files that we haven't
- *  got.  We don't really care at this level about
- *  macros being expanded as we want to see tokens
- *  such as KERN_ERR later on.
- */
-static int parse_cpp_include(parser *p, token *t)
-{
-	/*
-	 *  Gloop up #include "foo.h"
-	 */
-	do {
-		token_clear(t);
-		if (get_token(p, t) == EOF)
-			return EOF;
-		/* End of line, we're done! */
-		if (strcmp(t->token, "\n") == 0)
-			return PARSER_OK;
-	} while (t->type == TOKEN_WHITE_SPACE);
-
-
-	/*
-	 *  Ah, we gobbled up white spaces and
-	 *  now we should be at a '<' token
-	 *  Parse #include <something/foo.h>
-	 */
-	if (t->type == TOKEN_LESS_THAN) {
-		do {
-			if (get_token(p, t) == EOF)
-				return EOF;
-		} while (t->type != TOKEN_GREATER_THAN);
-	}
-
-	token_clear(t);
-
-	return PARSER_OK;
-}
-
-/*
- *  CPP phase, find and remove #includes
- */
-static int parse_cpp_includes(FILE *fp)
-{
-	token t;
-	parser p;
-
-	parser_new(&p, fp, false);
-	p.fp = fp;
-	p.skip_white_space = false;
-
-	token_new(&t);
-
-	while ((get_token(&p, &t)) != EOF) {
-		if (t.type == TOKEN_CPP) {
-			for (;;) {
-				token_clear(&t);
-				if (get_token(&p, &t) == EOF) {
-					token_free(&t);
-					return EOF;
-				}
-				if (strcmp(t.token, "\n") == 0)
-					break;
-				if (t.type == TOKEN_WHITE_SPACE) {
-					continue;
-				}
-				if (strcmp(t.token, "include") == 0) {
-					if (parse_cpp_include(&p, &t) == EOF) {
-						token_free(&t);
-						return EOF;
-					}
-					break;
-				}
-				printf("#%s", t.token);
-				break;
-			}
-		} else {
-			printf("%s", t.token);
-		}
-		token_clear(&t);
-	}
-	token_free(&t);
-	return EOF;
 }
 
 /*
@@ -896,7 +805,7 @@ static int parse_cpp_includes(FILE *fp)
  */
 int main(int argc, char **argv)
 {
-	size_t i, j;
+	size_t i;
 
 	/* Find optimal hash table size */
 	for (hash_size = 50; hash_size < TABLE_SIZE; hash_size++) {
