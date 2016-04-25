@@ -160,8 +160,8 @@ static int get_token(parser *p, token *t);
 
 static inline unsigned int djb2a(const char *str)
 {
-        unsigned int hash = 5381;
-        unsigned int c;
+        register unsigned int hash = 5381;
+        register unsigned int c;
 
         while ((c = *str++)) {
                 /* (hash * 33) ^ c */
@@ -806,6 +806,9 @@ static void parse_kernel_messages(FILE *fp)
 int main(int argc, char **argv)
 {
 	size_t i;
+
+	(void)argc;
+	(void)argv;
 
 	/* Find optimal hash table size */
 	for (hash_size = 50; hash_size < TABLE_SIZE; hash_size++) {
