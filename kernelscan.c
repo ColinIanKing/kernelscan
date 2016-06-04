@@ -458,8 +458,6 @@ static int parse_identifier(parser *p, token *t, int ch)
  */
 static int parse_literal(parser *p, token *t, int literal, token_type type)
 {
-	bool escaped = false;
-
 	t->type = type;
 
 	token_append(t, literal);
@@ -471,16 +469,42 @@ static int parse_literal(parser *p, token *t, int literal, token_type type)
 		}
 
 		if (ch == '\\') {
-			escaped = true;
-			token_append(t, ch);
-			continue;
+			ch = get_next(p);
+			if (ch == EOF)
+				return PARSER_OK;
+			switch (ch) {
+			case 'a':
+			case 'b':
+			case 'f':
+			case 'n':
+			case 'r':
+			case 't':
+			case 'v':
+			case '?':
+				continue;
+
+			case 'x':
+			case '0':
+			case '1':
+			case '2':
+			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '9':
+				token_append(t, '\\');
+				token_append(t, ch);
+				continue;
+			default:
+				token_append(t, '\\');
+				token_append(t, ch);
+				continue;
+			}
 		}
 
-		if (!escaped && ch == literal) {
-			token_append(t, ch);
+		if (ch == literal)
 			return PARSER_OK;
-		}
-		escaped = false;
 
 		token_append(t, ch);
 	}
