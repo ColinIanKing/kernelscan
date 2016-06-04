@@ -473,6 +473,9 @@ static int parse_literal(parser *p, token *t, int literal, token_type type)
 			if (ch == EOF)
 				return PARSER_OK;
 			switch (ch) {
+			case '?':
+				token_append(t, ch);
+				continue;
 			case 'a':
 			case 'b':
 			case 'f':
@@ -480,9 +483,8 @@ static int parse_literal(parser *p, token *t, int literal, token_type type)
 			case 'r':
 			case 't':
 			case 'v':
-			case '?':
+				token_append(t, ' ');
 				continue;
-
 			case 'x':
 			case '0':
 			case '1':
@@ -493,9 +495,6 @@ static int parse_literal(parser *p, token *t, int literal, token_type type)
 			case '6':
 			case '7':
 			case '9':
-				token_append(t, '\\');
-				token_append(t, ch);
-				continue;
 			default:
 				token_append(t, '\\');
 				token_append(t, ch);
@@ -503,8 +502,10 @@ static int parse_literal(parser *p, token *t, int literal, token_type type)
 			}
 		}
 
-		if (ch == literal)
+		if (ch == literal) {
+			token_append(t, ch);
 			return PARSER_OK;
+		}
 
 		token_append(t, ch);
 	}
