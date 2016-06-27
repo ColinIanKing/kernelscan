@@ -85,6 +85,8 @@ static unsigned int hash_size;
 
 static get_stack *free_stack;
 
+char stdin_buffer[65536];
+
 static char *funcs[] = {
 	"printk",
 	"printf",
@@ -853,6 +855,8 @@ int main(int argc, char **argv)
 
 	(void)argc;
 	(void)argv;
+
+	setvbuf(stdin, stdin_buffer, _IOFBF, sizeof stdin_buffer);
 
 	/* Find optimal hash table size */
 	for (hash_size = 458; hash_size < TABLE_SIZE; hash_size++) {
