@@ -165,8 +165,6 @@ static char *funcs[] = {
 
 static char *hash_funcs[TABLE_SIZE];
 
-static int get_token(parser *p, token *t);
-
 static inline unsigned int djb2a(const char *str)
 {
         register unsigned int hash = 5381;
