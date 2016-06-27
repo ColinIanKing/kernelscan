@@ -27,6 +27,7 @@
 #include <sys/types.h>
 
 #define UNLIKELY(c)		__builtin_expect((c), 0)
+#define LIKELY(c)		__builtin_expect((c), 1)
 
 #define PARSER_OK		0
 #define PARSER_COMMENT_FOUND	1
@@ -169,7 +170,7 @@ static inline unsigned int djb2a(const char *str)
         register unsigned int hash = 5381;
         register unsigned int c;
 
-        while ((c = *str++)) {
+        while (LIKELY(c = *str++)) {
                 /* (hash * 33) ^ c */
                 hash = ((hash << 5) + hash) ^ c;
         }
@@ -324,7 +325,7 @@ static int skip_comments(parser *p)
 		return PARSER_COMMENT_FOUND;
 	}
 
-	if (nextch == '*') {
+	if (LIKELY(nextch == '*')) {
 		for (;;) {
 			ch = get_next(p);
 			if (UNLIKELY(ch == EOF))
@@ -455,7 +456,7 @@ static int parse_identifier(parser *p, token *t, int ch)
 		if (UNLIKELY(ch == EOF)) {
 			break;
 		}
-		if (isalnum(ch) || ch == '_') {
+		if (LIKELY(isalnum(ch) || ch == '_')) {
 			token_append(t, ch);
 		} else {
 			unget_next(p, ch);
@@ -746,7 +747,7 @@ static int parse_kernel_message(parser *p, token *t)
 	if (t->type != TOKEN_PAREN_OPENED) {
 		free(line);
 		for (;;) {
-			if (get_token(p, t) == EOF)
+			if (UNLIKELY(get_token(p, t) == EOF))
 				return EOF;
 			if (t->type == TOKEN_TERMINAL)
 				break;
