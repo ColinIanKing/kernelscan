@@ -183,7 +183,7 @@ static inline unsigned int djb2a(const char *str)
 /*
  *  Initialise the parser
  */
-static inline void parser_new(parser *p, FILE *fp, bool skip_white_space)
+static inline void parser_new(parser *p, FILE *fp, const bool skip_white_space)
 {
 	p->get_chars = NULL;
 	p->fp = fp;
@@ -216,7 +216,7 @@ static int get_next(parser *p)
  *  Push character back onto the input
  *  stream (in this case, it is a simple FIFO stack
  */
-static void unget_next(parser *p, int ch)
+static void unget_next(parser *p, const int ch)
 {
 	get_stack *new;
 
@@ -281,7 +281,7 @@ static void token_free(token *t)
  *  we may run out of space, so this occasionally
  *  adds an extra 1K of token space for long tokens
  */
-static void token_append(token *t, int ch)
+static void token_append(token *t, const int ch)
 {
 	if (t->ptr < t->token + t->len - 1) {
 		/* Enough space, just add char */
@@ -472,7 +472,11 @@ static int parse_identifier(parser *p, token *t, int ch)
 /*
  *  Parse literal strings
  */
-static int parse_literal(parser *p, token *t, int literal, token_type type)
+static int parse_literal(
+	parser *p,
+	token *t,
+	const int literal,
+	const token_type type)
 {
 	t->type = type;
 
@@ -532,7 +536,7 @@ static int parse_literal(parser *p, token *t, int literal, token_type type)
  *  Parse operators such as +, - which can
  *  be + or ++ forms.
  */
-static int parse_op(parser *p, token *t, int op)
+static inline int parse_op(parser *p, token *t, const int op)
 {
 	int ch;
 
@@ -554,7 +558,7 @@ static int parse_op(parser *p, token *t, int op)
 /*
  *  Parse -, --, ->
  */
-static int parse_minus(parser *p, token *t, int op)
+static inline int parse_minus(parser *p, token *t, const int op)
 {
 	int ch;
 
