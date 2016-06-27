@@ -26,6 +26,8 @@
 #include <unistd.h>
 #include <sys/types.h>
 
+#define UNLIKELY(c)		__builtin_expect((c), 0)
+
 #define PARSER_OK		0
 #define PARSER_COMMENT_FOUND	1
 
@@ -307,13 +309,13 @@ static int skip_comments(parser *p)
 	int nextch;
 
 	nextch = get_next(p);
-	if (nextch == EOF)
+	if (UNLIKELY(nextch == EOF))
 		return EOF;
 
 	if (nextch == '/') {
 		do {
 			ch = get_next(p);
-			if (ch == EOF)
+			if (UNLIKELY(ch == EOF))
 				return EOF;
 		}
 		while (ch != '\n');
@@ -324,12 +326,12 @@ static int skip_comments(parser *p)
 	if (nextch == '*') {
 		for (;;) {
 			ch = get_next(p);
-			if (ch == EOF)
+			if (UNLIKELY(ch == EOF))
 				return EOF;
 
 			if (ch == '*') {
 				ch = get_next(p);
-				if (ch == EOF)
+				if (UNLIKELY(ch == EOF))
 					return EOF;
 
 				if (ch == '/')
@@ -365,7 +367,7 @@ static int parse_number(parser *p, token *t, int ch)
 		token_append(t, ch);
 
 		nextch1 = get_next(p);
-		if (nextch1 == EOF) {
+		if (UNLIKELY(nextch1 == EOF)) {
 			token_append(t, ch);
 			return PARSER_OK;
 		}
@@ -377,7 +379,7 @@ static int parse_number(parser *p, token *t, int ch)
 		} else if (nextch1 == 'x' || nextch1 == 'X') {
 			/* Is it hexadecimal? */
 			nextch2 = get_next(p);
-			if (nextch2 == EOF) {
+			if (UNLIKELY(nextch2 == EOF)) {
 				unget_next(p, nextch1);
 				return PARSER_OK;
 			}
@@ -408,7 +410,7 @@ static int parse_number(parser *p, token *t, int ch)
 	for (;;) {
 		ch = get_next(p);
 
-		if (ch == EOF) {
+		if (UNLIKELY(ch == EOF)) {
 			unget_next(p, ch);
 			return PARSER_OK;
 		}
@@ -449,7 +451,7 @@ static int parse_identifier(parser *p, token *t, int ch)
 
 	for (;;) {
 		ch = get_next(p);
-		if (ch == EOF) {
+		if (UNLIKELY(ch == EOF)) {
 			break;
 		}
 		if (isalnum(ch) || ch == '_') {
@@ -474,13 +476,12 @@ static int parse_literal(parser *p, token *t, int literal, token_type type)
 
 	for (;;) {
 		int ch = get_next(p);
-		if (ch == EOF) {
+		if (UNLIKELY(ch == EOF))
 			return PARSER_OK;
-		}
 
 		if (ch == '\\') {
 			ch = get_next(p);
-			if (ch == EOF)
+			if (UNLIKELY(ch == EOF))
 				return PARSER_OK;
 			switch (ch) {
 			case '?':
@@ -534,9 +535,8 @@ static int parse_op(parser *p, token *t, int op)
 	token_append(t, op);
 
 	ch = get_next(p);
-	if (ch == EOF) {
+	if (UNLIKELY(ch == EOF))
 		return PARSER_OK;
-	}
 
 	if (ch == op) {
 		token_append(t, op);
@@ -557,7 +557,7 @@ static int parse_minus(parser *p, token *t, int op)
 	token_append(t, op);
 
 	ch = get_next(p);
-	if (ch == EOF) {
+	if (UNLIKELY(ch == EOF)) {
 		return PARSER_OK;
 	}
 
@@ -593,7 +593,7 @@ static int get_token(parser *p, token *t)
 		/* Skip comments */
 		case '/':
 			ret = skip_comments(p);
-			if (ret == EOF)
+			if (UNLIKELY(ret == EOF))
 				return EOF;
 			if (ret == PARSER_COMMENT_FOUND)
 				continue;
@@ -708,7 +708,7 @@ static char *strdupcat(char *old, char *new)
 
 	if (old == NULL) {
 		tmp = malloc(len + 1);
-		if (tmp == NULL) {
+		if (UNLIKELY(tmp == NULL)) {
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
 			exit(EXIT_FAILURE);
 		}
@@ -716,7 +716,7 @@ static char *strdupcat(char *old, char *new)
 	} else {
 		size_t oldlen = strlen(old);
 		tmp = realloc(old, oldlen + len + 1);
-		if (tmp == NULL) {
+		if (UNLIKELY(tmp == NULL)) {
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
 			exit(EXIT_FAILURE);
 		}
@@ -739,7 +739,7 @@ static int parse_kernel_message(parser *p, token *t)
 
 	line = strdupcat(line, t->token);
 	token_clear(t);
-	if (get_token(p, t) == EOF) {
+	if (UNLIKELY(get_token(p, t) == EOF)) {
 		free(line);
 		return EOF;
 	}
@@ -758,7 +758,7 @@ static int parse_kernel_message(parser *p, token *t)
 
 	for (;;) {
 		int ret = get_token(p, t);
-		if (ret == EOF) {
+		if (UNLIKELY(ret == EOF)) {
 			free(line);
 			free(str);
 			return EOF;
