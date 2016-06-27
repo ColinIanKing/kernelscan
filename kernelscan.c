@@ -854,7 +854,7 @@ int main(int argc, char **argv)
 	(void)argv;
 
 	/* Find optimal hash table size */
-	for (hash_size = 50; hash_size < TABLE_SIZE; hash_size++) {
+	for (hash_size = 458; hash_size < TABLE_SIZE; hash_size++) {
 		bool collision = false;
 
 		memset(hash_funcs, 0, sizeof(hash_funcs));
