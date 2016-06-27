@@ -58,8 +58,8 @@ typedef enum {
  */
 typedef struct {
 	char *token;		/* The gathered string for this token */
-	size_t len;		/* Length of the token buffer */
 	char *ptr;		/* Current end of the token during the lexical analysis */
+	size_t len;		/* Length of the token buffer */
 	token_type type;	/* The type of token we think it is */
 } token;
 
@@ -67,8 +67,8 @@ typedef struct {
  *  Quick and dirty way to push input stream back, like ungetc()
  */
 typedef struct get_stack {
-	int ch;			/* Char pushed back */
 	struct get_stack *next;	/* Next one in list */
+	int ch;			/* Char pushed back */
 } get_stack;
 
 /*
@@ -76,8 +76,8 @@ typedef struct get_stack {
  */
 typedef struct {
 	FILE *fp;		/* The file descriptor we are reading */
-	bool skip_white_space;	/* Magic skip white space flag */
 	get_stack *get_chars;	/* Ungot chars get pushed onto this */
+	bool skip_white_space;	/* Magic skip white space flag */
 } parser;
 
 static unsigned int hash_size;
@@ -180,7 +180,7 @@ static inline unsigned int djb2a(const char *str)
 /*
  *  Initialise the parser
  */
-static void parser_new(parser *p, FILE *fp, bool skip_white_space)
+static inline void parser_new(parser *p, FILE *fp, bool skip_white_space)
 {
 	p->get_chars = NULL;
 	p->fp = fp;
@@ -221,7 +221,8 @@ static void unget_next(parser *p, int ch)
 		new = free_stack;
 		free_stack = free_stack->next;
 	} else {
-		if ((new = calloc(1, sizeof(get_stack))) == NULL) {
+		new = malloc(sizeof(get_stack));
+		if (UNLIKELY(new == NULL)) {
 			fprintf(stderr, "unget_next: Out of memory!\n");
 			exit(EXIT_FAILURE);
 		}
@@ -233,6 +234,17 @@ static void unget_next(parser *p, int ch)
 }
 
 /*
+ *  Clear the token ready for re-use
+ */
+static inline void token_clear(token *t)
+{
+	t->ptr = t->token;
+	t->type = TOKEN_UNKNOWN;
+	*(t->ptr) = '\0';
+}
+
+
+/*
  *  Create a new token, give it plenty of slop so
  *  we don't need to keep on reallocating the token
  *  buffer as we append more characters to it during
@@ -240,24 +252,13 @@ static void unget_next(parser *p, int ch)
  */
 static void token_new(token *t)
 {
-	if ((t->token = calloc(1024, 1)) == NULL) {
+	t->token = calloc(1024, 1);
+	if (UNLIKELY(t->token == NULL)) {
 		fprintf(stderr, "token_new: Out of memory!\n");
 		exit(EXIT_FAILURE);
 	}
 	t->len = 1024;
-	t->ptr = t->token;
-	t->type = TOKEN_UNKNOWN;
-	*(t->ptr) = '\0';
-}
-
-/*
- *  Clear the token ready for re-use
- */
-static void token_clear(token *t)
-{
-	t->ptr = t->token;
-	t->type = TOKEN_UNKNOWN;
-	*(t->ptr) = '\0';
+	token_clear(t);
 }
 
 /*
@@ -317,8 +318,7 @@ static int skip_comments(parser *p)
 			ch = get_next(p);
 			if (UNLIKELY(ch == EOF))
 				return EOF;
-		}
-		while (ch != '\n');
+		} while (ch != '\n');
 
 		return PARSER_COMMENT_FOUND;
 	}
@@ -557,9 +557,8 @@ static int parse_minus(parser *p, token *t, int op)
 	token_append(t, op);
 
 	ch = get_next(p);
-	if (UNLIKELY(ch == EOF)) {
+	if (UNLIKELY(ch == EOF))
 		return PARSER_OK;
-	}
 
 	if (ch == op) {
 		token_append(t, ch);
