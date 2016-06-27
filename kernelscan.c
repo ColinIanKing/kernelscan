@@ -80,6 +80,8 @@ typedef struct {
 
 static unsigned int hash_size;
 
+static get_stack *free_stack;
+
 static char *funcs[] = {
 	"printk",
 	"printf",
@@ -197,7 +199,8 @@ static int get_next(parser *p)
 		int ch = tmp->ch;
 
 		p->get_chars = tmp->next;
-		free(tmp);
+		tmp->next = free_stack;
+		free_stack = tmp;
 
 		return ch;
 	}
@@ -212,9 +215,14 @@ static void unget_next(parser *p, int ch)
 {
 	get_stack *new;
 
-	if ((new = calloc(1, sizeof(get_stack))) == NULL) {
-		fprintf(stderr, "unget_next: Out of memory!\n");
-		exit(EXIT_FAILURE);
+	if (free_stack) {
+		new = free_stack;
+		free_stack = free_stack->next;
+	} else {
+		if ((new = calloc(1, sizeof(get_stack))) == NULL) {
+			fprintf(stderr, "unget_next: Out of memory!\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	new->ch = ch;
