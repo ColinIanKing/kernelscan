@@ -290,7 +290,8 @@ static void token_append(token *t, int ch)
 		ptrdiff_t diff = t->ptr - t->token;
 
 		t->len += 1024;
-		if ((t->token = realloc(t->token, t->len)) == NULL) {
+		t->token = realloc(t->token, t->len);
+		if (UNLIKELY(t->token == NULL)) {
 			fprintf(stderr, "token_append: Out of memory!\n");
 			exit(EXIT_FAILURE);
 		}
