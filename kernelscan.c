@@ -959,7 +959,7 @@ int main(int argc, char **argv)
 	size_t i;
 
 	for (;;) {
-		int c = getopt(argc, argv, "ehr");
+		int c = getopt(argc, argv, "eh");
 		if (c == -1)
  			break;
 		switch (c) {
