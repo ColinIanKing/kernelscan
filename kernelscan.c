@@ -887,7 +887,8 @@ static void parse_kernel_messages(const char *path, FILE *fp)
 
 static void show_usage(void)
 {
-	fprintf(stderr, "kernelscan [-e] [-r] [path]\n");
+	fprintf(stderr, "kernelscan: the fast kernel source message scanner\n\n");
+	fprintf(stderr, "kernelscan [-e] [-r] path\n");
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
 	fprintf(stderr, "  -r     recursive scan files on path\n");
 }
@@ -970,13 +971,16 @@ int main(int argc, char **argv)
 	size_t i;
 
 	for (;;) {
-		int c = getopt(argc, argv, "er");
+		int c = getopt(argc, argv, "ehr");
 		if (c == -1)
  			break;
 		switch (c) {
 		case 'e':
 			opt_flags |= OPT_ESCAPE_STRIP;
 			break;
+		case 'h':
+			show_usage();
+			exit(EXIT_SUCCESS);
 		case 'r':
 			opt_flags |= OPT_RECURSIVE;
 			break;
