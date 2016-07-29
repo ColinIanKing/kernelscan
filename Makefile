@@ -15,6 +15,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
+BINDIR=/usr/bin
 
 CFLAGS += -O3 -Wall -Wextra
 
@@ -22,4 +23,8 @@ kernelscan: kernelscan.o
 	$(CC) $< -o $@
 
 clean:
-	rm kernelscan.o kernelscan
+	rm -f kernelscan.o kernelscan kernelscan*snap
+
+install: kernelscan
+	mkdir -p ${DESTDIR}${BINDIR}
+	cp kernelscan ${DESTDIR}${BINDIR}

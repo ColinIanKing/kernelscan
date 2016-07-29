@@ -1,0 +1,19 @@
+name: kernelscan
+version: 0.0.1
+summary: fast kernel source error message scanner
+description: kernelscan parses the kernel source and extracts all the kernel error messages, It also reformats the messages by joining multi-line literal strings to make it easier to look for error message text.
+
+confinement: strict
+
+parts:
+    kernelscan:
+        plugin: make
+        source: .
+        build-packages:
+            - gcc
+            - make
+apps:
+    kernelscan:
+        command: usr/bin/kernelscan
+        plugs: [home]
+
