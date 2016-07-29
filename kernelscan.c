@@ -32,8 +32,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#define OPT_RECURSIVE		0x00000001
-#define OPT_ESCAPE_STRIP	0x00000002
+#define OPT_ESCAPE_STRIP	0x00000001
 
 #define UNLIKELY(c)		__builtin_expect((c), 0)
 #define LIKELY(c)		__builtin_expect((c), 1)
@@ -888,9 +887,8 @@ static void parse_kernel_messages(const char *path, FILE *fp)
 static void show_usage(void)
 {
 	fprintf(stderr, "kernelscan: the fast kernel source message scanner\n\n");
-	fprintf(stderr, "kernelscan [-e] [-r] path\n");
+	fprintf(stderr, "kernelscan [-e] path\n");
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
-	fprintf(stderr, "  -r     recursive scan files on path\n");
 }
 
 static int parse_dir(const char *path)
@@ -981,9 +979,6 @@ int main(int argc, char **argv)
 		case 'h':
 			show_usage();
 			exit(EXIT_SUCCESS);
-		case 'r':
-			opt_flags |= OPT_RECURSIVE;
-			break;
 		default:
 			show_usage();
 			exit(EXIT_FAILURE);
