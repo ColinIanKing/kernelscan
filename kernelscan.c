@@ -20,11 +20,20 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <stddef.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <errno.h>
+#include <inttypes.h>
 #include <sys/types.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#define OPT_RECURSIVE		0x00000001
+#define OPT_ESCAPE_STRIP	0x00000002
 
 #define UNLIKELY(c)		__builtin_expect((c), 0)
 #define LIKELY(c)		__builtin_expect((c), 1)
@@ -82,10 +91,12 @@ typedef struct {
 } parser;
 
 static unsigned int hash_size;
-
 static get_stack *free_stack;
-
-char stdin_buffer[65536];
+static char stdin_buffer[65536];
+static uint32_t opt_flags;
+static uint64_t finds = 0;
+static uint64_t files = 0;
+static uint64_t lines = 0;
 
 static char *funcs[] = {
 	"printk",
@@ -164,6 +175,8 @@ static char *funcs[] = {
 #define TABLE_SIZE	(5000)
 
 static char *hash_funcs[TABLE_SIZE];
+
+static int parse_file(const char *path);
 
 static inline unsigned int djb2a(const char *str)
 {
@@ -486,34 +499,47 @@ static int parse_literal(
 			return PARSER_OK;
 
 		if (ch == '\\') {
-			ch = get_next(p);
-			if (UNLIKELY(ch == EOF))
-				return PARSER_OK;
-			switch (ch) {
-			case '?':
+			if (opt_flags & OPT_ESCAPE_STRIP) {
+				ch = get_next(p);
+				if (UNLIKELY(ch == EOF))
+					return EOF;
+				switch (ch) {
+				case '?':
+					token_append(t, ch);
+					continue;
+				case 'a':
+				case 'b':
+				case 'f':
+				case 'n':
+				case 'r':
+				case 't':
+				case 'v':
+					ch = get_next(p);
+					unget_next(p, ch);
+					
+					if (ch != literal)
+						token_append(t, ' ');
+					continue;
+				case 'x':
+				case '0':
+				case '1':
+				case '2':
+				case '3':
+				case '4':
+				case '5':
+				case '6':
+				case '7':
+				case '9':
+				default:
+					token_append(t, '\\');
+					token_append(t, ch);
+					continue;
+				}
+			} else {
 				token_append(t, ch);
-				continue;
-			case 'a':
-			case 'b':
-			case 'f':
-			case 'n':
-			case 'r':
-			case 't':
-			case 'v':
-				token_append(t, ' ');
-				continue;
-			case 'x':
-			case '0':
-			case '1':
-			case '2':
-			case '3':
-			case '4':
-			case '5':
-			case '6':
-			case '7':
-			case '9':
-			default:
-				token_append(t, '\\');
+				ch = get_next(p);
+				if (UNLIKELY(ch == EOF))
+					return EOF;
 				token_append(t, ch);
 				continue;
 			}
@@ -608,18 +634,29 @@ static int get_token(parser *p, token *t)
 			token_append(t, ch);
 			t->type = TOKEN_CPP;
 			return PARSER_OK;
+		case '\n':
+			lines++;
 		case ' ':
 		case '\t':
 		case '\r':
-		case '\n':
 		case '\\':
-			if (p->skip_white_space)
-				continue;
-			else {
+			if (opt_flags & OPT_ESCAPE_STRIP) {
+				if (p->skip_white_space)
+					continue;
 				token_append(t, ch);
 				t->type = TOKEN_WHITE_SPACE;
 				return PARSER_OK;
+			} else {
+				if (p->skip_white_space)
+					continue;
+				token_append(t, ch);
+				ch = get_next(p);
+				if (ch == EOF)
+					return EOF;
+				token_append(t, ch);
+				return PARSER_OK;
 			}
+			break;
 		case '(':
 			token_append(t, ch);
 			t->type = TOKEN_PAREN_OPENED;
@@ -734,7 +771,7 @@ static char *strdupcat(char *old, char *new)
 /*
  *  Parse a kernel message, like printk() or dev_err()
  */
-static int parse_kernel_message(parser *p, token *t)
+static int parse_kernel_message(const char *path, bool *source_emit, parser *p, token *t)
 {
 	bool got_string = false;
 	bool emit = false;
@@ -773,8 +810,14 @@ static int parse_kernel_message(parser *p, token *t)
 		 *  Hit ; so lets push out what we've parsed
 		 */
 		if (t->type == TOKEN_TERMINAL) {
-			if (emit)
+			if (emit) {
+				if (! *source_emit) {
+					printf("Source: %s\n", path);
+					*source_emit = true;
+				}
 				printf("%s\n", line);
+				finds++;
+			}
 			free(line);
 			free(str);
 			return PARSER_OK;
@@ -814,7 +857,7 @@ static int parse_kernel_message(parser *p, token *t)
 /*
  *  Parse input looking for printk or dev_err calls
  */
-static void parse_kernel_messages(FILE *fp)
+static void parse_kernel_messages(const char *path, FILE *fp)
 {
 	token t;
 	parser p;
@@ -822,6 +865,7 @@ static void parse_kernel_messages(FILE *fp)
 	parser_new(&p, fp, true);
 	p.fp = fp;
 	p.skip_white_space = true;
+	bool source_emit = false;
 
 	token_new(&t);
 
@@ -830,12 +874,82 @@ static void parse_kernel_messages(FILE *fp)
 		char *hf = hash_funcs[h];
 
 		if (hf && !strcmp(t.token, hf))
-			parse_kernel_message(&p, &t);
+			parse_kernel_message(path, &source_emit, &p, &t);
 		else
 			token_clear(&t);
 	}
 
 	token_free(&t);
+
+	if (source_emit)
+		putchar('\n');
+}
+
+static void show_usage(void)
+{
+	fprintf(stderr, "kernelscan [-e] [-r] [path]\n");
+	fprintf(stderr, "  -e     strip out C escape sequences\n");
+	fprintf(stderr, "  -r     recursive scan files on path\n");
+}
+
+static int parse_dir(const char *path)
+{
+	DIR *dp;
+	struct dirent *d;
+
+	if ((dp = opendir(path)) == NULL) {
+		fprintf(stderr, "Cannot open directory %s, errno=%d (%s)\n",
+			path, errno, strerror(errno));
+		return -1;
+	}
+	
+	while ((d = readdir(dp)) != NULL) {
+		char filepath[PATH_MAX];
+
+		if (!strcmp(d->d_name, "."))
+			continue;
+		if (!strcmp(d->d_name, ".."))
+			continue;
+
+		snprintf(filepath, sizeof(filepath), "%s/%s", path, d->d_name);
+		parse_file(filepath);
+	}
+	(void)closedir(dp);
+
+	return 0;
+}
+
+static int parse_file(const char *path)
+{
+	struct stat buf;
+
+	if (stat(path, &buf) < 0) {
+		fprintf(stderr, "Cannot stat %s, errno=%d (%s)\n",
+			path, errno, strerror(errno));
+		return -1;
+	}
+	if (S_ISREG(buf.st_mode)) {
+		size_t len = strlen(path);
+
+		if (((len >= 2) && !strcmp(path + len - 2, ".c")) ||
+		    ((len >= 2) && !strcmp(path + len - 2, ".h")) ||
+		    ((len >= 4) && !strcmp(path + len - 4, ".cpp"))) {
+			FILE *fp;
+
+			fp = fopen(path, "r");
+			if (fp == NULL) {
+				fprintf(stderr, "Cannot open %s, errno=%d (%s)\n",
+					path, errno, strerror(errno));
+				return -1;
+			}
+			parse_kernel_messages(path, fp);
+			files++;
+			fclose(fp);
+		}
+	} else if (S_ISDIR(buf.st_mode)) {
+		return parse_dir(path);
+	}
+	return 0;
 }
 
 /*
@@ -855,8 +969,22 @@ int main(int argc, char **argv)
 {
 	size_t i;
 
-	(void)argc;
-	(void)argv;
+	for (;;) {
+		int c = getopt(argc, argv, "er");
+		if (c == -1)
+ 			break;
+		switch (c) {
+		case 'e':
+			opt_flags |= OPT_ESCAPE_STRIP;
+			break;
+		case 'r':
+			opt_flags |= OPT_RECURSIVE;
+			break;
+		default:
+			show_usage();
+			exit(EXIT_FAILURE);
+		}
+	}
 
 	setvbuf(stdin, stdin_buffer, _IOFBF, sizeof stdin_buffer);
 
@@ -883,6 +1011,14 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	parse_kernel_messages(stdin);
+	while (argc > optind) {
+		parse_file(argv[optind]);
+		optind++;
+	}
+
+	printf("\n%" PRIu64 " files scanned\n", files);
+	printf("%" PRIu64 " lines scanned\n", lines);
+	printf("%" PRIu64 " statements found\n", finds);
+
 	exit(EXIT_SUCCESS);
 }
