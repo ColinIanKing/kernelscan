@@ -952,17 +952,7 @@ static int parse_file(const char *path)
 }
 
 /*
- *  Scan kernel source for printk KERN_ERR and dev_err
- *  calls.
- *
- *  Usage:
- *	cat drivers/pnp/pnpacpi/rsparser.c | kernelscan 
- *
- *  This prints out any kernel printk KERN_ERR calls
- *  or dev_err calls and checks to see if the error can be matched by
- *  any of the fwts klog messages.  It has some intelligence, it glues
- *  literal strings together such as "this is" "a message" into
- *  "this is a message" before it makes the klog comparison.
+ *  Scan kernel source for printk like statements
  */
 int main(int argc, char **argv)
 {
