@@ -814,7 +814,7 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser *p, 
 					printf("Source: %s\n", path);
 					*source_emit = true;
 				}
-				printf("%s\n", line);
+				printf("%s;\n", line);
 				finds++;
 			}
 			free(line);
