@@ -95,6 +95,8 @@ static uint64_t lines = 0;
 
 static char *funcs[] = {
 	"printk",
+	"PRINTK",
+	"dprintk",
 	"sdev_printk",
 	"printf",
 	"early_printk",
@@ -177,11 +179,15 @@ static char *funcs[] = {
 	"ata_link_printk",
 	"ata_dev_printk",
 	"no_printk",
+	"iscsi_conn_printk",
+	"sd_printk",
+	"sr_printk",
+	"st_printk",
 	"DEBUG",
 	NULL
 };
 
-#define TABLE_SIZE	(700)
+#define TABLE_SIZE	(1000)
 
 static char *hash_funcs[TABLE_SIZE];
 
