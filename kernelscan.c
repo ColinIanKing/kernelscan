@@ -99,6 +99,7 @@ static uint64_t lines = 0;
 
 static char *funcs[] = {
 	"printk",
+	"sdev_printk",
 	"printf",
 	"early_printk",
 	"vprintk_emit",
