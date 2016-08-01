@@ -29,8 +29,9 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <sys/types.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
+#include <fcntl.h>
 
 #define OPT_ESCAPE_STRIP	0x00000001
 
@@ -73,24 +74,16 @@ typedef struct {
 } token;
 
 /*
- *  Quick and dirty way to push input stream back, like ungetc()
- */
-typedef struct get_stack {
-	struct get_stack *next;	/* Next one in list */
-	int ch;			/* Char pushed back */
-} get_stack;
-
-/*
  *  Parser context
  */
 typedef struct {
-	FILE *fp;		/* The file descriptor we are reading */
-	get_stack *get_chars;	/* Ungot chars get pushed onto this */
+	char *data;		/* The start data being parsed */
+	char *data_end;		/* end of the data */
+	char *ptr;		/* current data position */
 	bool skip_white_space;	/* Magic skip white space flag */
 } parser;
 
 static unsigned int hash_size;
-static get_stack *free_stack;
 static char stdin_buffer[65536];
 static uint32_t opt_flags;
 static uint64_t finds = 0;
@@ -194,57 +187,33 @@ static inline unsigned int djb2a(const char *str)
 /*
  *  Initialise the parser
  */
-static inline void parser_new(parser *p, FILE *fp, const bool skip_white_space)
+static inline void parser_new(parser *p, char *data, char *data_end, const bool skip_white_space)
 {
-	p->get_chars = NULL;
-	p->fp = fp;
+	p->data = data;
+	p->data_end = data_end;
+	p->ptr = data;
 	p->skip_white_space = skip_white_space;
 }
 
 /*
  *  Get next character from input stream
  */
-static int get_next(parser *p)
+static inline int get_char(parser *p)
 {
-	/*
-	 * If we have chars pushed using unget_next
-	 * then pop them off the list first
-	 */
-	if (p->get_chars) {
-		get_stack *tmp = p->get_chars;
-		int ch = tmp->ch;
-
-		p->get_chars = tmp->next;
-		tmp->next = free_stack;
-		free_stack = tmp;
-
-		return ch;
-	}
-	return fgetc(p->fp);
+	if (LIKELY(p->ptr < p->data_end))
+		return *(p->ptr++);
+	else
+		return EOF;
 }
 
 /*
  *  Push character back onto the input
  *  stream (in this case, it is a simple FIFO stack
  */
-static void unget_next(parser *p, const int ch)
+static inline void unget_char(parser *p)
 {
-	get_stack *new;
-
-	if (free_stack) {
-		new = free_stack;
-		free_stack = free_stack->next;
-	} else {
-		new = malloc(sizeof(get_stack));
-		if (UNLIKELY(new == NULL)) {
-			fprintf(stderr, "unget_next: Out of memory!\n");
-			exit(EXIT_FAILURE);
-		}
-	}
-
-	new->ch = ch;
-	new->next = p->get_chars;
-	p->get_chars = new;
+	if (LIKELY(p->ptr > p->data))
+		p->ptr--;
 }
 
 /*
@@ -256,7 +225,6 @@ static inline void token_clear(token *t)
 	t->type = TOKEN_UNKNOWN;
 	*(t->ptr) = '\0';
 }
-
 
 /*
  *  Create a new token, give it plenty of slop so
@@ -324,13 +292,13 @@ static int skip_comments(parser *p)
 	int ch;
 	int nextch;
 
-	nextch = get_next(p);
+	nextch = get_char(p);
 	if (UNLIKELY(nextch == EOF))
 		return EOF;
 
 	if (nextch == '/') {
 		do {
-			ch = get_next(p);
+			ch = get_char(p);
 			if (UNLIKELY(ch == EOF))
 				return EOF;
 		} while (ch != '\n');
@@ -340,25 +308,25 @@ static int skip_comments(parser *p)
 
 	if (LIKELY(nextch == '*')) {
 		for (;;) {
-			ch = get_next(p);
+			ch = get_char(p);
 			if (UNLIKELY(ch == EOF))
 				return EOF;
 
 			if (ch == '*') {
-				ch = get_next(p);
+				ch = get_char(p);
 				if (UNLIKELY(ch == EOF))
 					return EOF;
 
 				if (ch == '/')
 					return PARSER_COMMENT_FOUND;
 
-				unget_next(p, ch);
+				unget_char(p);
 			}
 		}
 	}
 
 	/* Not a comment, push back */
-	unget_next(p, nextch);
+	unget_char(p);
 
 	return PARSER_OK;
 }
@@ -381,7 +349,7 @@ static int parse_number(parser *p, token *t, int ch)
 
 		token_append(t, ch);
 
-		nextch1 = get_next(p);
+		nextch1 = get_char(p);
 		if (UNLIKELY(nextch1 == EOF)) {
 			token_append(t, ch);
 			return PARSER_OK;
@@ -393,9 +361,9 @@ static int parse_number(parser *p, token *t, int ch)
 			isoct = true;
 		} else if (nextch1 == 'x' || nextch1 == 'X') {
 			/* Is it hexadecimal? */
-			nextch2 = get_next(p);
+			nextch2 = get_char(p);
 			if (UNLIKELY(nextch2 == EOF)) {
-				unget_next(p, nextch1);
+				unget_char(p);
 				return PARSER_OK;
 			}
 
@@ -406,12 +374,12 @@ static int parse_number(parser *p, token *t, int ch)
 				ishex = true;
 			} else {
 				/* Nope */
-				unget_next(p, nextch2);
-				unget_next(p, nextch1);
+				unget_char(p);
+				unget_char(p);
 				return PARSER_OK;
 			}
 		} else {
-			unget_next(p, nextch1);
+			unget_char(p);
 			return PARSER_OK;
 		}
 	}
@@ -423,10 +391,10 @@ static int parse_number(parser *p, token *t, int ch)
 	token_append(t, ch);
 
 	for (;;) {
-		ch = get_next(p);
+		ch = get_char(p);
 
 		if (UNLIKELY(ch == EOF)) {
-			unget_next(p, ch);
+			unget_char(p);
 			return PARSER_OK;
 		}
 
@@ -434,21 +402,21 @@ static int parse_number(parser *p, token *t, int ch)
 			if (isxdigit(ch)) {
 				token_append(t, ch);
 			} else {
-				unget_next(p, ch);
+				unget_char(p);
 				return PARSER_OK;
 			}
 		} else if (isoct) {
 			if (ch >= '0' && ch <= '8') {
 				token_append(t, ch);
 			} else {
-				unget_next(p, ch);
+				unget_char(p);
 				return PARSER_OK;
 			}
 		} else {
 			if (isdigit(ch)) {
 				token_append(t, ch);
 			} else {
-				unget_next(p, ch);
+				unget_char(p);
 				return PARSER_OK;
 			}
 		}
@@ -465,14 +433,14 @@ static int parse_identifier(parser *p, token *t, int ch)
 	t->type = TOKEN_IDENTIFIER;
 
 	for (;;) {
-		ch = get_next(p);
+		ch = get_char(p);
 		if (UNLIKELY(ch == EOF)) {
 			break;
 		}
 		if (LIKELY(isalnum(ch) || ch == '_')) {
 			token_append(t, ch);
 		} else {
-			unget_next(p, ch);
+			unget_char(p);
 			break;
 		}
 	}
@@ -494,13 +462,13 @@ static int parse_literal(
 	token_append(t, literal);
 
 	for (;;) {
-		int ch = get_next(p);
+		int ch = get_char(p);
 		if (UNLIKELY(ch == EOF))
 			return PARSER_OK;
 
 		if (ch == '\\') {
 			if (opt_flags & OPT_ESCAPE_STRIP) {
-				ch = get_next(p);
+				ch = get_char(p);
 				if (UNLIKELY(ch == EOF))
 					return EOF;
 				switch (ch) {
@@ -514,9 +482,8 @@ static int parse_literal(
 				case 'r':
 				case 't':
 				case 'v':
-					ch = get_next(p);
-					unget_next(p, ch);
-					
+					ch = get_char(p);
+					unget_char(p);
 					if (ch != literal)
 						token_append(t, ' ');
 					continue;
@@ -537,7 +504,7 @@ static int parse_literal(
 				}
 			} else {
 				token_append(t, ch);
-				ch = get_next(p);
+				ch = get_char(p);
 				if (UNLIKELY(ch == EOF))
 					return EOF;
 				token_append(t, ch);
@@ -566,7 +533,7 @@ static inline int parse_op(parser *p, token *t, const int op)
 
 	token_append(t, op);
 
-	ch = get_next(p);
+	ch = get_char(p);
 	if (UNLIKELY(ch == EOF))
 		return PARSER_OK;
 
@@ -575,7 +542,7 @@ static inline int parse_op(parser *p, token *t, const int op)
 		return PARSER_OK;
 	}
 
-	unget_next(p, ch);
+	unget_char(p);
 	return PARSER_OK;
 }
 
@@ -588,7 +555,7 @@ static inline int parse_minus(parser *p, token *t, const int op)
 
 	token_append(t, op);
 
-	ch = get_next(p);
+	ch = get_char(p);
 	if (UNLIKELY(ch == EOF))
 		return PARSER_OK;
 
@@ -603,7 +570,7 @@ static inline int parse_minus(parser *p, token *t, const int op)
 		return PARSER_OK;
 	}
 
-	unget_next(p, ch);
+	unget_char(p);
 	return PARSER_OK;
 }
 
@@ -615,7 +582,7 @@ static int get_token(parser *p, token *t)
 	int ret;
 
 	for (;;) {
-		int ch = get_next(p);
+		int ch = get_char(p);
 
 		switch (ch) {
 		case EOF:
@@ -650,7 +617,7 @@ static int get_token(parser *p, token *t)
 				if (p->skip_white_space)
 					continue;
 				token_append(t, ch);
-				ch = get_next(p);
+				ch = get_char(p);
 				if (ch == EOF)
 					return EOF;
 				token_append(t, ch);
@@ -857,14 +824,12 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser *p, 
 /*
  *  Parse input looking for printk or dev_err calls
  */
-static void parse_kernel_messages(const char *path, FILE *fp)
+static void parse_kernel_messages(const char *path, char *data, char *data_end)
 {
 	token t;
 	parser p;
 
-	parser_new(&p, fp, true);
-	p.fp = fp;
-	p.skip_white_space = true;
+	parser_new(&p, data, data_end, true);
 	bool source_emit = false;
 
 	token_new(&t);
@@ -902,7 +867,6 @@ static int parse_dir(const char *path)
 			path, errno, strerror(errno));
 		return -1;
 	}
-	
 	while ((d = readdir(dp)) != NULL) {
 		char filepath[PATH_MAX];
 
@@ -934,17 +898,35 @@ static int parse_file(const char *path)
 		if (((len >= 2) && !strcmp(path + len - 2, ".c")) ||
 		    ((len >= 2) && !strcmp(path + len - 2, ".h")) ||
 		    ((len >= 4) && !strcmp(path + len - 4, ".cpp"))) {
-			FILE *fp;
+			int fd;
+			char *data;
 
-			fp = fopen(path, "r");
-			if (fp == NULL) {
+			fd = open(path, O_RDONLY);
+			if (fd < 0) {
 				fprintf(stderr, "Cannot open %s, errno=%d (%s)\n",
 					path, errno, strerror(errno));
 				return -1;
 			}
-			parse_kernel_messages(path, fp);
+			if (fstat(fd, &buf) < 0) {
+				fprintf(stderr, "Cannot stat %s, errno=%d (%s)\n",
+					path, errno, strerror(errno));
+				(void)close(fd);
+				return -1;
+			}
+			if (buf.st_size > 0) {
+				data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
+					MAP_SHARED | MAP_POPULATE, fd, 0);
+				if (data == MAP_FAILED) {
+					fprintf(stderr, "Cannot mmap %s, errno=%d (%s)\n",
+						path, errno, strerror(errno));
+					(void)close(fd);
+					return -1;
+				}
+				parse_kernel_messages(path, data, data + buf.st_size);
+				(void)munmap(data, (size_t)buf.st_size);
+			}
+			(void)close(fd);
 			files++;
-			fclose(fp);
 		}
 	} else if (S_ISDIR(buf.st_mode)) {
 		return parse_dir(path);
