@@ -519,7 +519,7 @@ static int parse_literal(
 			}
 		}
 
-		if (ch == literal) {
+		if (UNLIKELY(ch == literal)) {
 			token_append(t, ch);
 			return PARSER_OK;
 		}
