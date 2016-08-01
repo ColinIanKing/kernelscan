@@ -841,7 +841,7 @@ static void parse_kernel_messages(const char *path, char *data, char *data_end, 
 	token_clear(t);
 
 	while ((get_token(&p, t)) != EOF) {
-		unsigned int h = djb2a(t->token) % hash_size;
+		register unsigned int h = djb2a(t->token) % hash_size;
 		char *hf = hash_funcs[h];
 
 		if (hf && !strcmp(t->token, hf))
@@ -906,21 +906,21 @@ static int parse_file(const char *path, token *t)
 			char *data;
 
 			fd = open(path, O_RDONLY);
-			if (fd < 0) {
+			if (UNLIKELY(fd < 0)) {
 				fprintf(stderr, "Cannot open %s, errno=%d (%s)\n",
 					path, errno, strerror(errno));
 				return -1;
 			}
-			if (fstat(fd, &buf) < 0) {
+			if (UNLIKELY(fstat(fd, &buf) < 0)) {
 				fprintf(stderr, "Cannot stat %s, errno=%d (%s)\n",
 					path, errno, strerror(errno));
 				(void)close(fd);
 				return -1;
 			}
-			if (buf.st_size > 0) {
+			if (LIKELY(buf.st_size > 0)) {
 				data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
 					MAP_SHARED | MAP_POPULATE, fd, 0);
-				if (data == MAP_FAILED) {
+				if (UNLIKELY(data == MAP_FAILED)) {
 					fprintf(stderr, "Cannot mmap %s, errno=%d (%s)\n",
 						path, errno, strerror(errno));
 					(void)close(fd);
