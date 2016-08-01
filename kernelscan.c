@@ -41,6 +41,8 @@
 #define PARSER_OK		0
 #define PARSER_COMMENT_FOUND	1
 
+#define TOKEN_CHUNK_SIZE	(16384)
+
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
  */
@@ -67,8 +69,9 @@ typedef enum {
  *  A token
  */
 typedef struct {
-	char *token;		/* The gathered string for this token */
 	char *ptr;		/* Current end of the token during the lexical analysis */
+	char *token;		/* The gathered string for this token */
+	char *token_end;	/* end of the token */
 	size_t len;		/* Length of the token buffer */
 	token_type type;	/* The type of token we think it is */
 } token;
@@ -77,9 +80,9 @@ typedef struct {
  *  Parser context
  */
 typedef struct {
+	char *ptr;		/* current data position */
 	char *data;		/* The start data being parsed */
 	char *data_end;		/* end of the data */
-	char *ptr;		/* current data position */
 	bool skip_white_space;	/* Magic skip white space flag */
 } parser;
 
@@ -169,7 +172,7 @@ static char *funcs[] = {
 
 static char *hash_funcs[TABLE_SIZE];
 
-static int parse_file(const char *path);
+static int parse_file(const char *path, token *t);
 
 static inline unsigned int djb2a(const char *str)
 {
@@ -222,6 +225,7 @@ static inline void unget_char(parser *p)
 static inline void token_clear(token *t)
 {
 	t->ptr = t->token;
+	t->token_end = t->token + t->len;
 	t->type = TOKEN_UNKNOWN;
 	*(t->ptr) = '\0';
 }
@@ -234,12 +238,12 @@ static inline void token_clear(token *t)
  */
 static void token_new(token *t)
 {
-	t->token = calloc(1024, 1);
+	t->token = calloc(TOKEN_CHUNK_SIZE, 1);
 	if (UNLIKELY(t->token == NULL)) {
 		fprintf(stderr, "token_new: Out of memory!\n");
 		exit(EXIT_FAILURE);
 	}
-	t->len = 1024;
+	t->len = TOKEN_CHUNK_SIZE;
 	token_clear(t);
 }
 
@@ -252,7 +256,23 @@ static void token_free(token *t)
 	t->token = NULL;
 	t->ptr = NULL;
 	t->len = 0;
+	t->token_end = NULL;
 	t->type = TOKEN_UNKNOWN;
+}
+
+static inline void token_expand(token *t)
+{
+	/* No more space, add 1K more space */
+	ptrdiff_t diff = t->ptr - t->token;
+
+	t->len += TOKEN_CHUNK_SIZE;
+	t->token_end += TOKEN_CHUNK_SIZE;
+	t->token = realloc(t->token, t->len);
+	if (UNLIKELY(t->token == NULL)) {
+		fprintf(stderr, "token_append: Out of memory!\n");
+		exit(EXIT_FAILURE);
+	}
+	t->ptr = t->token + diff;
 }
 
 /*
@@ -262,26 +282,13 @@ static void token_free(token *t)
  */
 static void token_append(token *t, const int ch)
 {
-	if (t->ptr < t->token + t->len - 1) {
-		/* Enough space, just add char */
-		*(t->ptr) = ch;
-		t->ptr++;
-		*(t->ptr) = 0;
-	} else {
-		/* No more space, add 1K more space */
-		ptrdiff_t diff = t->ptr - t->token;
+	if (UNLIKELY(t->ptr > t->token_end))
+		token_expand(t);
 
-		t->len += 1024;
-		t->token = realloc(t->token, t->len);
-		if (UNLIKELY(t->token == NULL)) {
-			fprintf(stderr, "token_append: Out of memory!\n");
-			exit(EXIT_FAILURE);
-		}
-		t->ptr = t->token + diff;
-		*(t->ptr) = ch;
-		t->ptr++;
-		*(t->ptr) = 0;
-	}
+	/* Enough space, just add char */
+	*(t->ptr) = ch;
+	t->ptr++;
+	*(t->ptr) = 0;
 }
 
 /*
@@ -289,7 +296,7 @@ static void token_append(token *t, const int ch)
  */
 static int skip_comments(parser *p)
 {
-	int ch;
+	register int ch;
 	int nextch;
 
 	nextch = get_char(p);
@@ -715,7 +722,7 @@ static char *strdupcat(char *old, char *new)
 	size_t len = strlen(new);
 	char *tmp;
 
-	if (old == NULL) {
+	if (UNLIKELY(old == NULL)) {
 		tmp = malloc(len + 1);
 		if (UNLIKELY(tmp == NULL)) {
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
@@ -824,27 +831,24 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser *p, 
 /*
  *  Parse input looking for printk or dev_err calls
  */
-static void parse_kernel_messages(const char *path, char *data, char *data_end)
+static void parse_kernel_messages(const char *path, char *data, char *data_end, token *t)
 {
-	token t;
 	parser p;
 
 	parser_new(&p, data, data_end, true);
 	bool source_emit = false;
 
-	token_new(&t);
+	token_clear(t);
 
-	while ((get_token(&p, &t)) != EOF) {
-		unsigned int h = djb2a(t.token) % hash_size;
+	while ((get_token(&p, t)) != EOF) {
+		unsigned int h = djb2a(t->token) % hash_size;
 		char *hf = hash_funcs[h];
 
-		if (hf && !strcmp(t.token, hf))
-			parse_kernel_message(path, &source_emit, &p, &t);
+		if (hf && !strcmp(t->token, hf))
+			parse_kernel_message(path, &source_emit, &p, t);
 		else
-			token_clear(&t);
+			token_clear(t);
 	}
-
-	token_free(&t);
 
 	if (source_emit)
 		putchar('\n');
@@ -857,7 +861,7 @@ static void show_usage(void)
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
 }
 
-static int parse_dir(const char *path)
+static int parse_dir(const char *path, token *t)
 {
 	DIR *dp;
 	struct dirent *d;
@@ -876,14 +880,14 @@ static int parse_dir(const char *path)
 			continue;
 
 		snprintf(filepath, sizeof(filepath), "%s/%s", path, d->d_name);
-		parse_file(filepath);
+		parse_file(filepath, t);
 	}
 	(void)closedir(dp);
 
 	return 0;
 }
 
-static int parse_file(const char *path)
+static int parse_file(const char *path, token *t)
 {
 	struct stat buf;
 
@@ -922,14 +926,14 @@ static int parse_file(const char *path)
 					(void)close(fd);
 					return -1;
 				}
-				parse_kernel_messages(path, data, data + buf.st_size);
+				parse_kernel_messages(path, data, data + buf.st_size, t);
 				(void)munmap(data, (size_t)buf.st_size);
 			}
 			(void)close(fd);
 			files++;
 		}
 	} else if (S_ISDIR(buf.st_mode)) {
-		return parse_dir(path);
+		return parse_dir(path, t);
 	}
 	return 0;
 }
@@ -940,6 +944,7 @@ static int parse_file(const char *path)
 int main(int argc, char **argv)
 {
 	size_t i;
+	token t;
 
 	for (;;) {
 		int c = getopt(argc, argv, "eh");
@@ -983,10 +988,12 @@ int main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
+	token_new(&t);
 	while (argc > optind) {
-		parse_file(argv[optind]);
+		parse_file(argv[optind], &t);
 		optind++;
 	}
+	token_free(&t);
 
 	printf("\n%" PRIu64 " files scanned\n", files);
 	printf("%" PRIu64 " lines scanned\n", lines);
