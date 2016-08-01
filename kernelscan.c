@@ -164,27 +164,42 @@ static char *funcs[] = {
 	"ACPI_ERROR_METHOD",
 	"ACPI_DEBUG_PRINT",
 	"ACPI_DEBUG_PRINT_RAW",
+	"snd_printk",
+	"srm_printk",
+	"efi_printk",
+	"netdev_printk",
+	"netif_printk",
+	"shost_printk",
+	"scmd_printk",
+	"asd_printk",
+	"ecryptfs_printk",
+	"ata_port_printk",
+	"ata_link_printk",
+	"ata_dev_printk",
+	"no_printk",
 	"DEBUG",
 	NULL
 };
 
-#define TABLE_SIZE	(5000)
+#define TABLE_SIZE	(700)
 
 static char *hash_funcs[TABLE_SIZE];
 
 static int parse_file(const char *path, token *t);
 
-static inline unsigned int djb2a(const char *str)
+static uint32_t fnv1a(const char *str)
 {
-        register unsigned int hash = 5381;
-        register unsigned int c;
+        const uint32_t fnv_prime = 16777619; /* 2^24 + 2^9 + 0x93 */
+        register uint32_t c;
+        register uint32_t hash = 5381;
 
-        while (LIKELY(c = *str++)) {
-                /* (hash * 33) ^ c */
-                hash = ((hash << 5) + hash) ^ c;
+        while ((c = *str++)) {
+                hash ^= c;
+                hash *= fnv_prime;
         }
         return hash;
 }
+
 
 
 /*
@@ -841,7 +856,7 @@ static void parse_kernel_messages(const char *path, char *data, char *data_end, 
 	token_clear(t);
 
 	while ((get_token(&p, t)) != EOF) {
-		register unsigned int h = djb2a(t->token) % hash_size;
+		register unsigned int h = fnv1a(t->token) % hash_size;
 		char *hf = hash_funcs[h];
 
 		if (hf && !strcmp(t->token, hf))
@@ -966,13 +981,13 @@ int main(int argc, char **argv)
 	setvbuf(stdin, stdin_buffer, _IOFBF, sizeof stdin_buffer);
 
 	/* Find optimal hash table size */
-	for (hash_size = 458; hash_size < TABLE_SIZE; hash_size++) {
+	for (hash_size = 684; hash_size < TABLE_SIZE; hash_size++) {
 		bool collision = false;
 
 		memset(hash_funcs, 0, sizeof(hash_funcs));
 
 		for (i = 0; funcs[i]; i++) {
-			unsigned int h = djb2a(funcs[i]) % hash_size;
+			unsigned int h = fnv1a(funcs[i]) % hash_size;
 
 			if (hash_funcs[h]) {
 				collision = true;
