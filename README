@@ -7,4 +7,4 @@ be sanity checked for spelling mistakes etc..
 Run:
 
 make
-./kernelscan.sh path-to-kernel-source-tree
+kernelscan path-to-kernel-source-tree
