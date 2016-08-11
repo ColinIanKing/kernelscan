@@ -241,6 +241,14 @@ static inline void unget_char(parser *p)
 }
 
 /*
+ *  Get length of token
+ */
+static inline size_t token_len(token *t)
+{
+	return t->ptr - t->token;
+}
+
+/*
  *  Clear the token ready for re-use
  */
 static inline void token_clear(token *t)
@@ -462,9 +470,6 @@ static int parse_identifier(parser *p, token *t, int ch)
 
 	for (;;) {
 		ch = get_char(p);
-		if (UNLIKELY(ch == EOF)) {
-			break;
-		}
 		if (LIKELY(isalnum(ch) || ch == '_')) {
 			token_append(t, ch);
 		} else {
@@ -562,8 +567,6 @@ static inline int parse_op(parser *p, token *t, const int op)
 	token_append(t, op);
 
 	ch = get_char(p);
-	if (UNLIKELY(ch == EOF))
-		return PARSER_OK;
 
 	if (ch == op) {
 		token_append(t, op);
@@ -584,8 +587,6 @@ static inline int parse_minus(parser *p, token *t, const int op)
 	token_append(t, op);
 
 	ch = get_char(p);
-	if (UNLIKELY(ch == EOF))
-		return PARSER_OK;
 
 	if (ch == op) {
 		token_append(t, ch);
@@ -738,21 +739,21 @@ static void literal_strip_quotes(token *t)
  *  on the heap.  This returns the newly
  *  concatenated string.
  */
-static char *strdupcat(char *old, char *new)
+static char *strdupcat(char *old, char *new, size_t *oldlen, const size_t newlen)
 {
-	size_t len = strlen(new);
 	char *tmp;
 
 	if (UNLIKELY(old == NULL)) {
-		tmp = malloc(len + 1);
+		*oldlen = newlen + 1;
+		tmp = malloc(*oldlen);
 		if (UNLIKELY(tmp == NULL)) {
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
 			exit(EXIT_FAILURE);
 		}
 		strcpy(tmp, new);
 	} else {
-		size_t oldlen = strlen(old);
-		tmp = realloc(old, oldlen + len + 1);
+		*oldlen += newlen + 1;
+		tmp = realloc(old, *oldlen);
 		if (UNLIKELY(tmp == NULL)) {
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
 			exit(EXIT_FAILURE);
@@ -773,8 +774,10 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser *p, 
 	bool found = false;
 	char *str = NULL;
 	char *line = NULL;
+	size_t line_len = 0;
+	size_t str_len;
 
-	line = strdupcat(line, t->token);
+	line = strdupcat(line, t->token, &line_len, token_len(t));
 	token_clear(t);
 	if (UNLIKELY(get_token(p, t) == EOF)) {
 		free(line);
@@ -790,8 +793,10 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser *p, 
 		}
 		return PARSER_OK;
 	}
-	line = strdupcat(line, t->token);
+	line = strdupcat(line, t->token, &line_len, token_len(t));
 	token_clear(t);
+
+	str_len = 0;
 
 	for (;;) {
 		int ret = get_token(p, t);
@@ -820,16 +825,16 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser *p, 
 
 		if (t->type == TOKEN_LITERAL_STRING) {
 			literal_strip_quotes(t);
-			str = strdupcat(str, t->token);
+			str = strdupcat(str, t->token, &str_len, token_len(t));
 
 			if (!got_string)
-				line = strdupcat(line, "\"");
+				line = strdupcat(line, "\"", &line_len, 1);
 
 			got_string = true;
 			emit = true;
 		} else {
 			if (got_string)
-				line = strdupcat(line, "\"");
+				line = strdupcat(line, "\"", &line_len, 1);
 
 			got_string = false;
 
@@ -837,12 +842,13 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser *p, 
 				found |= true;
 				free(str);
 				str = NULL;
+				str_len = 0;
 			}
 		}
 
-		line = strdupcat(line, t->token);
+		line = strdupcat(line, t->token, &line_len, token_len(t));
 		if (t->type == TOKEN_COMMA)
-			line = strdupcat(line, " ");
+			line = strdupcat(line, " ", &line_len, 1);
 
 		token_clear(t);
 	}
