@@ -19,7 +19,7 @@ BINDIR=/usr/bin
 
 CFLAGS += -O3 -Wall -Wextra
 
-kernelscan: kernelscan.o
+kernelscan: kernelscan.o Makefile
 	$(CC) $< -o $@
 
 clean:
