@@ -199,7 +199,7 @@ static uint32_t fnv1a(const char *str)
         register uint32_t c;
         register uint32_t hash = 5381;
 
-        while ((c = *str++)) {
+        while (LIKELY(c = *str++)) {
                 hash ^= c;
                 hash *= fnv_prime;
         }
@@ -726,9 +726,9 @@ static int get_token(parser *p, token *t)
  */
 static void literal_strip_quotes(token *t)
 {
-	size_t len = strlen(t->token);
+	size_t len = token_len(t);
 
-	t->token[len-1] = 0;
+	t->token[len - 1] = 0;
 
 	memmove(t->token, t->token + 1, len - 1);
 }
