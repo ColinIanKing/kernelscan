@@ -917,52 +917,49 @@ static int parse_dir(const char *path, token *t)
 static int parse_file(const char *path, token *t)
 {
 	struct stat buf;
+	int fd;
+	int rc = 0;
 
-	if (stat(path, &buf) < 0) {
-		fprintf(stderr, "Cannot stat %s, errno=%d (%s)\n",
+	fd = open(path, O_RDONLY);
+	if (UNLIKELY(fd < 0)) {
+		fprintf(stderr, "Cannot open %s, errno=%d (%s)\n",
 			path, errno, strerror(errno));
 		return -1;
 	}
+	if (fstat(fd, &buf) < 0) {
+		fprintf(stderr, "Cannot stat %s, errno=%d (%s)\n",
+			path, errno, strerror(errno));
+		(void)close(fd);
+		return -1;
+	}
+
 	if (S_ISREG(buf.st_mode)) {
 		size_t len = strlen(path);
 
 		if (((len >= 2) && !strcmp(path + len - 2, ".c")) ||
 		    ((len >= 2) && !strcmp(path + len - 2, ".h")) ||
 		    ((len >= 4) && !strcmp(path + len - 4, ".cpp"))) {
-			int fd;
 			char *data;
 
-			fd = open(path, O_RDONLY);
-			if (UNLIKELY(fd < 0)) {
-				fprintf(stderr, "Cannot open %s, errno=%d (%s)\n",
-					path, errno, strerror(errno));
-				return -1;
-			}
-			if (UNLIKELY(fstat(fd, &buf) < 0)) {
-				fprintf(stderr, "Cannot stat %s, errno=%d (%s)\n",
-					path, errno, strerror(errno));
-				(void)close(fd);
-				return -1;
-			}
 			if (LIKELY(buf.st_size > 0)) {
 				data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
 					MAP_SHARED | MAP_POPULATE, fd, 0);
+				(void)close(fd);
 				if (UNLIKELY(data == MAP_FAILED)) {
 					fprintf(stderr, "Cannot mmap %s, errno=%d (%s)\n",
 						path, errno, strerror(errno));
-					(void)close(fd);
 					return -1;
 				}
 				parse_kernel_messages(path, data, data + buf.st_size, t);
 				(void)munmap(data, (size_t)buf.st_size);
 			}
-			(void)close(fd);
 			files++;
 		}
 	} else if (S_ISDIR(buf.st_mode)) {
-		return parse_dir(path, t);
+		rc = parse_dir(path, t);
 	}
-	return 0;
+	(void)close(fd);
+	return rc;
 }
 
 /*
