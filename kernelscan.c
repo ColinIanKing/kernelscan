@@ -334,13 +334,13 @@ static int skip_comments(parser_t *p)
 
 	nextch = get_char(p);
 	if (UNLIKELY(nextch == PARSER_EOF))
-		return PARSER_EOF;
+		return nextch;
 
 	if (nextch == '/') {
 		do {
 			ch = get_char(p);
 			if (UNLIKELY(ch == PARSER_EOF))
-				return PARSER_EOF;
+				return ch;
 		} while (ch != '\n');
 
 		return PARSER_COMMENT_FOUND;
@@ -350,12 +350,12 @@ static int skip_comments(parser_t *p)
 		for (;;) {
 			ch = get_char(p);
 			if (UNLIKELY(ch == PARSER_EOF))
-				return PARSER_EOF;
+				return ch;
 
 			if (ch == '*') {
 				ch = get_char(p);
 				if (UNLIKELY(ch == PARSER_EOF))
-					return PARSER_EOF;
+					return ch;
 
 				if (ch == '/')
 					return PARSER_COMMENT_FOUND;
@@ -509,7 +509,7 @@ static int parse_literal(
 			if (opt_flags & OPT_ESCAPE_STRIP) {
 				ch = get_char(p);
 				if (UNLIKELY(ch == PARSER_EOF))
-					return PARSER_EOF;
+					return ch;
 				switch (ch) {
 				case '?':
 					token_append(t, ch);
@@ -545,7 +545,7 @@ static int parse_literal(
 				token_append(t, ch);
 				ch = get_char(p);
 				if (UNLIKELY(ch == PARSER_EOF))
-					return PARSER_EOF;
+					return ch;
 				token_append(t, ch);
 				continue;
 			}
@@ -616,7 +616,7 @@ static inline int parse_skip_comments(parser_t *p, token_t *t, int ch, bool *do_
 	int ret = skip_comments(p);
 
 	if (UNLIKELY(ret == PARSER_EOF))
-		return PARSER_EOF;
+		return ret;
 
 	if (ret == PARSER_COMMENT_FOUND) {
 		*do_ret = false;
@@ -743,7 +743,7 @@ static inline int parse_backslash(parser_t *p, token_t *t, int ch, bool *do_ret)
 		token_append(t, ch);
 		ch = get_char(p);
 		if (ch == PARSER_EOF)
-			return PARSER_EOF;
+			return ch;
 		token_append(t, ch);
 	}
 	return PARSER_OK;
