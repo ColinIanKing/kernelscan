@@ -944,8 +944,8 @@ static int parse_file(const char *path, token *t)
 			if (LIKELY(buf.st_size > 0)) {
 				data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
 					MAP_SHARED | MAP_POPULATE, fd, 0);
-				(void)close(fd);
 				if (UNLIKELY(data == MAP_FAILED)) {
+					(void)close(fd);
 					fprintf(stderr, "Cannot mmap %s, errno=%d (%s)\n",
 						path, errno, strerror(errno));
 					return -1;
