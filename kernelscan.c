@@ -63,7 +63,7 @@ typedef enum {
 	TOKEN_COMMA,		/* , */
 	TOKEN_ARROW,		/* -> */
 	TOKEN_TERMINAL,		/* ; */
-} token_type;
+} token_type_t;
 
 /*
  *  A token
@@ -73,8 +73,8 @@ typedef struct {
 	char *token;		/* The gathered string for this token */
 	char *token_end;	/* end of the token */
 	size_t len;		/* Length of the token buffer */
-	token_type type;	/* The type of token we think it is */
-} token;
+	token_type_t type;	/* The type of token we think it is */
+} token_t;
 
 /*
  *  Parser context
@@ -84,9 +84,9 @@ typedef struct {
 	char *data;		/* The start data being parsed */
 	char *data_end;		/* end of the data */
 	bool skip_white_space;	/* Magic skip white space flag */
-} parser;
+} parser_t;
 
-typedef int (*get_token_action_t)(parser *p, token *t, char ch, bool *cont);
+typedef int (*get_token_action_t)(parser_t *p, token_t *t, char ch, bool *cont);
 
 static unsigned int hash_size;
 static char stdin_buffer[65536];
@@ -193,7 +193,7 @@ static char *funcs[] = {
 
 static char *hash_funcs[TABLE_SIZE];
 
-static int parse_file(const char *path, token *t);
+static int parse_file(const char *path, token_t *t);
 
 static uint32_t fnv1a(const char *str)
 {
@@ -213,7 +213,7 @@ static uint32_t fnv1a(const char *str)
 /*
  *  Initialise the parser
  */
-static inline void parser_new(parser *p, char *data, char *data_end, const bool skip_white_space)
+static inline void parser_new(parser_t *p, char *data, char *data_end, const bool skip_white_space)
 {
 	p->data = data;
 	p->data_end = data_end;
@@ -224,7 +224,7 @@ static inline void parser_new(parser *p, char *data, char *data_end, const bool 
 /*
  *  Get next character from input stream
  */
-static inline int get_char(parser *p)
+static inline int get_char(parser_t *p)
 {
 	if (LIKELY(p->ptr < p->data_end)) {
 		__builtin_prefetch(p->ptr + 64, 1, 1);
@@ -237,7 +237,7 @@ static inline int get_char(parser *p)
  *  Push character back onto the input
  *  stream (in this case, it is a simple FIFO stack
  */
-static inline void unget_char(parser *p)
+static inline void unget_char(parser_t *p)
 {
 	if (LIKELY(p->ptr > p->data))
 		p->ptr--;
@@ -246,7 +246,7 @@ static inline void unget_char(parser *p)
 /*
  *  Get length of token
  */
-static inline size_t token_len(token *t)
+static inline size_t token_len(token_t *t)
 {
 	return t->ptr - t->token;
 }
@@ -254,7 +254,7 @@ static inline size_t token_len(token *t)
 /*
  *  Clear the token ready for re-use
  */
-static inline void token_clear(token *t)
+static inline void token_clear(token_t *t)
 {
 	t->ptr = t->token;
 	t->token_end = t->token + t->len;
@@ -268,7 +268,7 @@ static inline void token_clear(token *t)
  *  buffer as we append more characters to it during
  *  the lexing phase.
  */
-static void token_new(token *t)
+static void token_new(token_t *t)
 {
 	t->token = calloc(TOKEN_CHUNK_SIZE, 1);
 	if (UNLIKELY(t->token == NULL)) {
@@ -282,7 +282,7 @@ static void token_new(token *t)
 /*
  *  Free the token
  */
-static void token_free(token *t)
+static void token_free(token_t *t)
 {
 	free(t->token);
 	t->token = NULL;
@@ -292,7 +292,7 @@ static void token_free(token *t)
 	t->type = TOKEN_UNKNOWN;
 }
 
-static inline void token_expand(token *t)
+static inline void token_expand(token_t *t)
 {
 	/* No more space, add 1K more space */
 	ptrdiff_t diff = t->ptr - t->token;
@@ -312,7 +312,7 @@ static inline void token_expand(token *t)
  *  we may run out of space, so this occasionally
  *  adds an extra 1K of token space for long tokens
  */
-static void token_append(token *t, const int ch)
+static void token_append(token_t *t, const int ch)
 {
 	if (UNLIKELY(t->ptr > t->token_end))
 		token_expand(t);
@@ -326,7 +326,7 @@ static void token_append(token *t, const int ch)
 /*
  *  Parse C comments and just throw them away
  */
-static int skip_comments(parser *p)
+static int skip_comments(parser_t *p)
 {
 	register int ch;
 	int nextch;
@@ -375,7 +375,7 @@ static int skip_comments(parser *p)
  *  kernel doesn't have floats or doubles, so we
  *  can just parse decimal, octal or hex values.
  */
-static int parse_number(parser *p, token *t, char ch, bool *cont)
+static int parse_number(parser_t *p, token_t *t, char ch, bool *cont)
 {
 	bool ishex = false;
 	bool isoct = false;
@@ -467,7 +467,7 @@ static int parse_number(parser *p, token *t, char ch, bool *cont)
 /*
  *  Parse identifiers
  */
-static int parse_identifier(parser *p, token *t, char ch, bool *cont)
+static int parse_identifier(parser_t *p, token_t *t, char ch, bool *cont)
 {
 	(void)cont;
 
@@ -490,10 +490,10 @@ static int parse_identifier(parser *p, token *t, char ch, bool *cont)
  *  Parse literal strings
  */
 static int parse_literal(
-	parser *p,
-	token *t,
+	parser_t *p,
+	token_t *t,
 	const int literal,
-	const token_type type)
+	const token_type_t type)
 {
 	t->type = type;
 
@@ -565,7 +565,7 @@ static int parse_literal(
  *  Parse operators such as +, - which can
  *  be + or ++ forms.
  */
-static inline int parse_op(parser *p, token *t, const char op, bool *do_ret)
+static inline int parse_op(parser_t *p, token_t *t, const char op, bool *do_ret)
 {
 	int ch;
 	(void)do_ret;
@@ -586,7 +586,7 @@ static inline int parse_op(parser *p, token *t, const char op, bool *do_ret)
 /*
  *  Parse -, --, ->
  */
-static inline int parse_minus(parser *p, token *t, char op, bool *do_ret)
+static inline int parse_minus(parser_t *p, token_t *t, char op, bool *do_ret)
 {
 	int ch;
 
@@ -610,7 +610,7 @@ static inline int parse_minus(parser *p, token *t, char op, bool *do_ret)
 	return PARSER_OK;
 }
 
-static inline int parse_skip_comments(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_skip_comments(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	int ret = skip_comments(p);
 
@@ -625,7 +625,7 @@ static inline int parse_skip_comments(parser *p, token *t, char ch, bool *do_ret
 	return PARSER_OK;
 }
 
-static inline int parse_hash(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_hash(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -635,7 +635,7 @@ static inline int parse_hash(parser *p, token *t, char ch, bool *do_ret)
 	return PARSER_OK;
 }
 
-static inline int parse_paren_opened(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_paren_opened(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -645,7 +645,7 @@ static inline int parse_paren_opened(parser *p, token *t, char ch, bool *do_ret)
 	return PARSER_OK;
 }
 
-static inline int parse_paren_closed(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_paren_closed(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -656,7 +656,7 @@ static inline int parse_paren_closed(parser *p, token *t, char ch, bool *do_ret)
 }
 
 
-static inline int parse_square_opened(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_square_opened(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -666,7 +666,7 @@ static inline int parse_square_opened(parser *p, token *t, char ch, bool *do_ret
 	return PARSER_OK;
 }
 
-static inline int parse_square_closed(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_square_closed(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -676,7 +676,7 @@ static inline int parse_square_closed(parser *p, token *t, char ch, bool *do_ret
 	return PARSER_OK;
 }
 
-static inline int parse_less_than(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_less_than(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -686,7 +686,7 @@ static inline int parse_less_than(parser *p, token *t, char ch, bool *do_ret)
 	return PARSER_OK;
 }
 
-static inline int parse_greater_than(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_greater_than(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -696,7 +696,7 @@ static inline int parse_greater_than(parser *p, token *t, char ch, bool *do_ret)
 	return PARSER_OK;
 }
 
-static inline int parse_comma(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_comma(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -706,7 +706,7 @@ static inline int parse_comma(parser *p, token *t, char ch, bool *do_ret)
 	return PARSER_OK;
 }
 
-static inline int parse_terminal(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_terminal(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -716,7 +716,7 @@ static inline int parse_terminal(parser *p, token *t, char ch, bool *do_ret)
 	return PARSER_OK;
 }
 
-static inline int parse_misc_char(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_misc_char(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)p;
 	(void)do_ret;
@@ -725,21 +725,21 @@ static inline int parse_misc_char(parser *p, token *t, char ch, bool *do_ret)
 	return PARSER_OK;
 }
 
-static inline int parse_literal_string(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_literal_string(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)do_ret;
 
 	return parse_literal(p, t, ch, TOKEN_LITERAL_STRING);
 }
 
-static inline int parse_literal_char(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_literal_char(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	(void)do_ret;
 
 	return parse_literal(p, t, ch, TOKEN_LITERAL_CHAR);
 }
 
-static inline int parse_backslash(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_backslash(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	if (p->skip_white_space) {
 		*do_ret = false;
@@ -759,7 +759,7 @@ static inline int parse_backslash(parser *p, token *t, char ch, bool *do_ret)
 	return PARSER_OK;
 }
 
-static inline int parse_newline(parser *p, token *t, char ch, bool *do_ret)
+static inline int parse_newline(parser_t *p, token_t *t, char ch, bool *do_ret)
 {
 	lines++;
 	return parse_backslash(p, t, ch, do_ret);
@@ -862,7 +862,7 @@ static get_token_action_t get_token_actions[] = {
 /*
  *  Gather a token from input stream
  */
-static int get_token(parser *p, token *t)
+static int get_token(parser_t *p, token_t *t)
 {
 
 	for (;;) {
@@ -890,7 +890,7 @@ static int get_token(parser *p, token *t)
  *  Literals such as "foo" and 'f' sometimes
  *  need the quotes stripping off.
  */
-static void literal_strip_quotes(token *t)
+static void literal_strip_quotes(token_t *t)
 {
 	size_t len = token_len(t);
 
@@ -933,7 +933,7 @@ static char *strdupcat(char *old, char *new, size_t *oldlen, const size_t newlen
 /*
  *  Parse a kernel message, like printk() or dev_err()
  */
-static int parse_kernel_message(const char *path, bool *source_emit, parser *p, token *t)
+static int parse_kernel_message(const char *path, bool *source_emit, parser_t *p, token_t *t)
 {
 	bool got_string = false;
 	bool emit = false;
@@ -1024,9 +1024,9 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser *p, 
 /*
  *  Parse input looking for printk or dev_err calls
  */
-static void parse_kernel_messages(const char *path, char *data, char *data_end, token *t)
+static void parse_kernel_messages(const char *path, char *data, char *data_end, token_t *t)
 {
-	parser p;
+	parser_t p;
 
 	parser_new(&p, data, data_end, true);
 	bool source_emit = false;
@@ -1054,7 +1054,7 @@ static void show_usage(void)
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
 }
 
-static int parse_dir(const char *path, token *t)
+static int parse_dir(const char *path, token_t *t)
 {
 	DIR *dp;
 	struct dirent *d;
@@ -1080,7 +1080,7 @@ static int parse_dir(const char *path, token *t)
 	return 0;
 }
 
-static int parse_file(const char *path, token *t)
+static int parse_file(const char *path, token_t *t)
 {
 	struct stat buf;
 	int fd;
@@ -1134,7 +1134,7 @@ static int parse_file(const char *path, token *t)
 int main(int argc, char **argv)
 {
 	size_t i;
-	token t;
+	token_t t;
 
 	for (;;) {
 		int c = getopt(argc, argv, "eh");
