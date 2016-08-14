@@ -86,6 +86,8 @@ typedef struct {
 	bool skip_white_space;	/* Magic skip white space flag */
 } parser;
 
+typedef int (*get_token_action_t)(parser *p, token *t, char ch, bool *cont);
+
 static unsigned int hash_size;
 static char stdin_buffer[65536];
 static uint32_t opt_flags;
@@ -372,10 +374,12 @@ static int skip_comments(parser *p)
  *  kernel doesn't have floats or doubles, so we
  *  can just parse decimal, octal or hex values.
  */
-static int parse_number(parser *p, token *t, int ch)
+static int parse_number(parser *p, token *t, char ch, bool *cont)
 {
 	bool ishex = false;
 	bool isoct = false;
+
+	(void)cont;
 
 	/*
 	 *  Crude way to detect the kind of integer
@@ -462,8 +466,10 @@ static int parse_number(parser *p, token *t, int ch)
 /*
  *  Parse identifiers
  */
-static int parse_identifier(parser *p, token *t, int ch)
+static int parse_identifier(parser *p, token *t, char ch, bool *cont)
 {
+	(void)cont;
+
 	token_append(t, ch);
 
 	t->type = TOKEN_IDENTIFIER;
@@ -560,9 +566,10 @@ static int parse_literal(
  *  Parse operators such as +, - which can
  *  be + or ++ forms.
  */
-static inline int parse_op(parser *p, token *t, const int op)
+static inline int parse_op(parser *p, token *t, const char op, bool *do_ret)
 {
 	int ch;
+	(void)do_ret;
 
 	token_append(t, op);
 
@@ -580,10 +587,11 @@ static inline int parse_op(parser *p, token *t, const int op)
 /*
  *  Parse -, --, ->
  */
-static inline int parse_minus(parser *p, token *t, const int op)
+static inline int parse_minus(parser *p, token *t, char op, bool *do_ret)
 {
 	int ch;
 
+	(void)do_ret;
 	token_append(t, op);
 
 	ch = get_char(p);
@@ -603,117 +611,275 @@ static inline int parse_minus(parser *p, token *t, const int op)
 	return PARSER_OK;
 }
 
+static inline int parse_skip_comments(parser *p, token *t, char ch, bool *do_ret)
+{
+	int ret = skip_comments(p);
+
+	if (UNLIKELY(ret == EOF))
+		return EOF;
+
+	if (ret == PARSER_COMMENT_FOUND) {
+		*do_ret = false;
+		return ret;
+	}
+	token_append(t, ch);
+	return PARSER_OK;
+}
+
+static inline int parse_hash(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	t->type = TOKEN_CPP;
+	return PARSER_OK;
+}
+
+static inline int parse_paren_opened(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	t->type = TOKEN_PAREN_OPENED;
+	return PARSER_OK;
+}
+
+static inline int parse_paren_closed(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	t->type = TOKEN_PAREN_CLOSED;
+	return PARSER_OK;
+}
+
+
+static inline int parse_square_opened(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	t->type = TOKEN_SQUARE_OPENED;
+	return PARSER_OK;
+}
+
+static inline int parse_square_closed(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	t->type = TOKEN_SQUARE_CLOSED;
+	return PARSER_OK;
+}
+
+static inline int parse_less_than(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	t->type = TOKEN_LESS_THAN;
+	return PARSER_OK;
+}
+
+static inline int parse_greater_than(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	t->type = TOKEN_GREATER_THAN;
+	return PARSER_OK;
+}
+
+static inline int parse_comma(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	t->type = TOKEN_COMMA;
+	return PARSER_OK;
+}
+
+static inline int parse_terminal(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	t->type = TOKEN_TERMINAL;
+	return PARSER_OK;
+}
+
+static inline int parse_misc_char(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)p;
+	(void)do_ret;
+
+	token_append(t, ch);
+	return PARSER_OK;
+}
+
+static inline int parse_literal_string(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)do_ret;
+
+	return parse_literal(p, t, ch, TOKEN_LITERAL_STRING);
+}
+
+static inline int parse_literal_char(parser *p, token *t, char ch, bool *do_ret)
+{
+	(void)do_ret;
+
+	return parse_literal(p, t, ch, TOKEN_LITERAL_CHAR);
+}
+
+static inline int parse_backslash(parser *p, token *t, char ch, bool *do_ret)
+{
+	if (p->skip_white_space) {
+		*do_ret = false;
+		return PARSER_OK;
+	}
+
+	if (opt_flags & OPT_ESCAPE_STRIP) {
+		token_append(t, ch);
+		t->type = TOKEN_WHITE_SPACE;
+	} else {
+		token_append(t, ch);
+		ch = get_char(p);
+		if (ch == EOF)
+			return EOF;
+		token_append(t, ch);
+	}
+	return PARSER_OK;
+}
+
+static inline int parse_newline(parser *p, token *t, char ch, bool *do_ret)
+{
+	lines++;
+	return parse_backslash(p, t, ch, do_ret);
+}
+
+static get_token_action_t get_token_actions[] = {
+	['/'] = parse_skip_comments,
+	['#'] = parse_hash,
+	['('] = parse_paren_opened,
+	[')'] = parse_paren_closed,
+	['['] = parse_square_opened,
+	[']'] = parse_square_closed,
+	['<'] = parse_less_than,
+	['>'] = parse_greater_than,
+	[','] = parse_comma,
+	[';'] = parse_terminal,
+	['{'] = parse_misc_char,
+	['}'] = parse_misc_char,
+	[':'] = parse_misc_char,
+	['~'] = parse_misc_char,
+	['?'] = parse_misc_char,
+	['*'] = parse_misc_char,
+	['%'] = parse_misc_char,
+	['!'] = parse_misc_char,
+	['.'] = parse_misc_char,
+	['0'] = parse_number,
+	['1'] = parse_number,
+	['2'] = parse_number,
+	['3'] = parse_number,
+	['4'] = parse_number,
+	['5'] = parse_number,
+	['6'] = parse_number,
+	['7'] = parse_number,
+	['8'] = parse_number,
+	['9'] = parse_number,
+	['+'] = parse_op,
+	['='] = parse_op,
+	['|'] = parse_op,
+	['&'] = parse_op,
+	['-'] = parse_minus,
+	['a'] = parse_identifier,
+	['b'] = parse_identifier,
+	['c'] = parse_identifier,
+	['d'] = parse_identifier,
+	['e'] = parse_identifier,
+	['f'] = parse_identifier,
+	['g'] = parse_identifier,
+	['h'] = parse_identifier,
+	['i'] = parse_identifier,
+	['j'] = parse_identifier,
+	['k'] = parse_identifier,
+	['l'] = parse_identifier,
+	['m'] = parse_identifier,
+	['n'] = parse_identifier,
+	['o'] = parse_identifier,
+	['p'] = parse_identifier,
+	['q'] = parse_identifier,
+	['r'] = parse_identifier,
+	['s'] = parse_identifier,
+	['t'] = parse_identifier,
+	['u'] = parse_identifier,
+	['v'] = parse_identifier,
+	['w'] = parse_identifier,
+	['x'] = parse_identifier,
+	['y'] = parse_identifier,
+	['z'] = parse_identifier,
+	['A'] = parse_identifier,
+	['B'] = parse_identifier,
+	['C'] = parse_identifier,
+	['D'] = parse_identifier,
+	['E'] = parse_identifier,
+	['F'] = parse_identifier,
+	['G'] = parse_identifier,
+	['H'] = parse_identifier,
+	['I'] = parse_identifier,
+	['J'] = parse_identifier,
+	['K'] = parse_identifier,
+	['L'] = parse_identifier,
+	['M'] = parse_identifier,
+	['N'] = parse_identifier,
+	['O'] = parse_identifier,
+	['P'] = parse_identifier,
+	['Q'] = parse_identifier,
+	['R'] = parse_identifier,
+	['S'] = parse_identifier,
+	['T'] = parse_identifier,
+	['U'] = parse_identifier,
+	['V'] = parse_identifier,
+	['W'] = parse_identifier,
+	['X'] = parse_identifier,
+	['Y'] = parse_identifier,
+	['Z'] = parse_identifier,
+	['"'] = parse_literal_string,
+	['\''] = parse_literal_char,
+	['\\'] = parse_backslash,
+};
+
+
 /*
  *  Gather a token from input stream
  */
 static int get_token(parser *p, token *t)
 {
-	int ret;
 
 	for (;;) {
+		bool do_ret = true;
 		int ch = get_char(p);
+		get_token_action_t action;
 
-		switch (ch) {
-		case EOF:
-			return EOF;
+		if (ch == EOF)
+			return ch;
 
-		/* Skip comments */
-		case '/':
-			ret = skip_comments(p);
-			if (UNLIKELY(ret == EOF))
-				return EOF;
-			if (ret == PARSER_COMMENT_FOUND)
-				continue;
-			token_append(t, ch);
-			return PARSER_OK;
-		case '#':
-			token_append(t, ch);
-			t->type = TOKEN_CPP;
-			return PARSER_OK;
-		case '\n':
-			lines++;
-		case ' ':
-		case '\t':
-		case '\r':
-		case '\\':
-			if (opt_flags & OPT_ESCAPE_STRIP) {
-				if (p->skip_white_space)
-					continue;
-				token_append(t, ch);
-				t->type = TOKEN_WHITE_SPACE;
-				return PARSER_OK;
-			} else {
-				if (p->skip_white_space)
-					continue;
-				token_append(t, ch);
-				ch = get_char(p);
-				if (ch == EOF)
-					return EOF;
-				token_append(t, ch);
-				return PARSER_OK;
-			}
-			break;
-		case '(':
-			token_append(t, ch);
-			t->type = TOKEN_PAREN_OPENED;
-			return PARSER_OK;
-		case ')':
-			token_append(t, ch);
-			t->type = TOKEN_PAREN_CLOSED;
-			return PARSER_OK;
-		case '[':
-			token_append(t, ch);
-			t->type = TOKEN_SQUARE_OPENED;
-			return PARSER_OK;
-		case ']':
-			token_append(t, ch);
-			t->type = TOKEN_SQUARE_CLOSED;
-			return PARSER_OK;
-		case '<':
-			token_append(t, ch);
-			t->type = TOKEN_LESS_THAN;
-			return PARSER_OK;
-		case '>':
-			token_append(t, ch);
-			t->type = TOKEN_GREATER_THAN;
-			return PARSER_OK;
-		case ',':
-			token_append(t, ch);
-			t->type = TOKEN_COMMA;
-			return PARSER_OK;
-		case ';':
-			token_append(t, ch);
-			t->type = TOKEN_TERMINAL;
-			return PARSER_OK;
-		case '{':
-		case '}':
-		case ':':
-		case '~':
-		case '?':
-		case '*':
-		case '%':
-		case '!':
-		case '.':
-			token_append(t, ch);
-			return PARSER_OK;
-		case '0'...'9':
-			return parse_number(p, t, ch);
-			break;
-		case 'a'...'z':
-		case 'A'...'Z':
-			return parse_identifier(p, t, ch);
-			break;
-		case '"':
-			return parse_literal(p, t, ch, TOKEN_LITERAL_STRING);
-		case '\'':
-			return parse_literal(p, t, ch, TOKEN_LITERAL_CHAR);
-		case '+':
-		case '=':
-		case '|':
-		case '&':
-			return parse_op(p, t, ch);
-		case '-':
-			return parse_minus(p, t, ch);
+		action = get_token_actions[ch];
+
+		if (action) {
+			register int ret = action(p, t, ch, &do_ret);
+
+			if (do_ret)
+				return ret;
 		}
 	}
 
