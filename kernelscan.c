@@ -226,9 +226,10 @@ static inline void parser_new(parser *p, char *data, char *data_end, const bool 
  */
 static inline int get_char(parser *p)
 {
-	if (LIKELY(p->ptr < p->data_end))
+	if (LIKELY(p->ptr < p->data_end)) {
+		__builtin_prefetch(p->ptr + 64, 1, 1);
 		return *(p->ptr++);
-	else
+	} else
 		return EOF;
 }
 
@@ -470,21 +471,19 @@ static int parse_identifier(parser *p, token *t, char ch, bool *cont)
 {
 	(void)cont;
 
-	token_append(t, ch);
-
 	t->type = TOKEN_IDENTIFIER;
+	token_append(t, ch);
 
 	for (;;) {
 		ch = get_char(p);
 		if (LIKELY(isalnum(ch) || ch == '_')) {
 			token_append(t, ch);
-		} else {
-			unget_char(p);
-			break;
+			continue;
 		}
-	}
 
-	return PARSER_OK;
+		unget_char(p);
+		return PARSER_OK;
+	}
 }
 
 /*
@@ -856,6 +855,7 @@ static get_token_action_t get_token_actions[] = {
 	['"'] = parse_literal_string,
 	['\''] = parse_literal_char,
 	['\\'] = parse_backslash,
+	['\n'] = parse_newline,
 };
 
 
