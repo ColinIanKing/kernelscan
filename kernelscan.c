@@ -188,6 +188,7 @@ static char *funcs[] = {
 	"sr_printk",
 	"st_printk",
 	"DEBUG",
+	"kvasprintf",
 	NULL
 };
 
