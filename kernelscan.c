@@ -91,7 +91,6 @@ typedef struct {
 typedef int (*get_token_action_t)(parser_t *p, token_t *t, int ch);
 
 static unsigned int hash_size;
-static char stdin_buffer[65536];
 static uint32_t opt_flags;
 static uint64_t finds = 0;
 static uint64_t files = 0;
@@ -1128,8 +1127,6 @@ int main(int argc, char **argv)
 			exit(EXIT_FAILURE);
 		}
 	}
-
-	setvbuf(stdin, stdin_buffer, _IOFBF, sizeof stdin_buffer);
 
 	/* Find optimal hash table size */
 	for (hash_size = 684; hash_size < TABLE_SIZE; hash_size++) {
