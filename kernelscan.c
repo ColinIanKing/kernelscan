@@ -82,19 +82,21 @@ typedef struct {
  *  Parser context
  */
 typedef struct {
-	char *ptr;		/* current data position */
-	char *data;		/* The start data being parsed */
-	char *data_end;		/* end of the data */
+	unsigned char *ptr;		/* current data position */
+	unsigned char *data;		/* The start data being parsed */
+	unsigned char *data_end;	/* end of the data */
 	bool skip_white_space;	/* Magic skip white space flag */
 } parser_t;
 
 typedef int (*get_token_action_t)(parser_t *p, token_t *t, int ch);
 
-static unsigned int hash_size;
-static uint32_t opt_flags;
 static uint64_t finds = 0;
 static uint64_t files = 0;
 static uint64_t lines = 0;
+static uint64_t lineno = 0;
+static unsigned int hash_size;
+static uint32_t opt_flags;
+static bool whitespace_after_newline = true;
 
 static char *funcs[] = {
 	"printk",
@@ -215,7 +217,7 @@ static uint32_t fnv1a(const char *str)
 /*
  *  Initialise the parser
  */
-static inline void parser_new(parser_t *p, char *data, char *data_end, const bool skip_white_space)
+static inline void parser_new(parser_t *p, unsigned char *data, unsigned char *data_end, const bool skip_white_space)
 {
 	p->data = data;
 	p->data_end = data_end;
@@ -229,7 +231,7 @@ static inline void parser_new(parser_t *p, char *data, char *data_end, const boo
 static inline int get_char(parser_t *p)
 {
 	if (LIKELY(p->ptr < p->data_end)) {
-		__builtin_prefetch(p->ptr + 64, 1, 1);
+		//__builtin_prefetch(p->ptr + 64, 1, 1);
 		return *(p->ptr++);
 	} else
 		return PARSER_EOF;
@@ -323,6 +325,33 @@ static void token_append(token_t *t, const int ch)
 	*(t->ptr) = ch;
 	t->ptr++;
 	*(t->ptr) = 0;
+
+	if (ch == ' ' || ch == '\n' || ch == '\t')
+		return;
+	whitespace_after_newline = false;
+}
+
+static int skip_macros(parser_t *p)
+{
+	bool continuation = false;
+
+	for (;;) {
+		register int ch;
+
+		ch = get_char(p);
+		if (UNLIKELY(ch == PARSER_EOF))
+			break;
+		if (ch == '\n') {
+			lines++;
+			lineno++;
+			if (!continuation)
+				return ch;
+			continuation = false;
+		} else if (ch == '\\') {
+			continuation = true;
+		}
+	}
+	return PARSER_EOF;
 }
 
 /*
@@ -631,8 +660,12 @@ static inline int parse_simple(token_t *t, int ch, token_type_t type)
 static inline int parse_hash(parser_t *p, token_t *t, int ch)
 {
 	(void)p;
+	(void)ch;
 
-	return parse_simple(t, ch, TOKEN_CPP);
+	skip_macros(p);
+	token_clear(t);
+
+	return PARSER_OK; //parse_simple(t, ch, TOKEN_CPP);
 }
 
 static inline int parse_paren_opened(parser_t *p, token_t *t, int ch)
@@ -731,6 +764,8 @@ static inline int parse_backslash(parser_t *p, token_t *t, int ch)
 static inline int parse_newline(parser_t *p, token_t *t, int ch)
 {
 	lines++;
+	lineno++;
+	whitespace_after_newline = true;
 	return parse_backslash(p, t, ch);
 }
 
@@ -843,7 +878,6 @@ static get_token_action_t get_token_actions[] = {
  */
 static int get_token(parser_t *p, token_t *t)
 {
-
 	for (;;) {
 		const int ch = get_char(p);
 		const get_token_action_t action = get_token_actions[ch];
@@ -932,6 +966,7 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser_t *p
 			if (t->type == TOKEN_TERMINAL)
 				break;
 		}
+		token_clear(t);
 		return PARSER_OK;
 	}
 	line = strdupcat(line, t->token, &line_len, token_len(t));
@@ -961,6 +996,7 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser_t *p
 			}
 			free(line);
 			free(str);
+			token_clear(t);
 			return PARSER_OK;
 		}
 
@@ -999,7 +1035,7 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser_t *p
 /*
  *  Parse input looking for printk or dev_err calls
  */
-static void parse_kernel_messages(const char *path, char *data, char *data_end, token_t *t)
+static void parse_kernel_messages(const char *path, unsigned char *data, unsigned char *data_end, token_t *t)
 {
 	parser_t p;
 
@@ -1073,6 +1109,7 @@ static int parse_file(const char *path, token_t *t)
 		(void)close(fd);
 		return -1;
 	}
+	lineno = 0;
 
 	if (S_ISREG(buf.st_mode)) {
 		size_t len = strlen(path);
@@ -1081,7 +1118,7 @@ static int parse_file(const char *path, token_t *t)
 		    ((len >= 2) && !strcmp(path + len - 2, ".h")) ||
 		    ((len >= 4) && !strcmp(path + len - 4, ".cpp"))) {
 			if (LIKELY(buf.st_size > 0)) {
-				char *data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
+				unsigned char *data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
 					MAP_SHARED | MAP_POPULATE, fd, 0);
 				if (UNLIKELY(data == MAP_FAILED)) {
 					(void)close(fd);
