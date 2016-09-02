@@ -235,7 +235,7 @@ static inline void parser_new(
 static inline int get_char(parser_t *p)
 {
 	if (LIKELY(p->ptr < p->data_end)) {
-		//__builtin_prefetch(p->ptr + 64, 1, 1);
+		__builtin_prefetch(p->ptr + 64, 1, 1);
 		return *(p->ptr++);
 	} else
 		return PARSER_EOF;
