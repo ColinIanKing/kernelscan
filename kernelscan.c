@@ -1080,10 +1080,8 @@ static int parse_file(const char *path, token_t *t)
 		if (((len >= 2) && !strcmp(path + len - 2, ".c")) ||
 		    ((len >= 2) && !strcmp(path + len - 2, ".h")) ||
 		    ((len >= 4) && !strcmp(path + len - 4, ".cpp"))) {
-			char *data;
-
 			if (LIKELY(buf.st_size > 0)) {
-				data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
+				char *data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
 					MAP_SHARED | MAP_POPULATE, fd, 0);
 				if (UNLIKELY(data == MAP_FAILED)) {
 					(void)close(fd);
