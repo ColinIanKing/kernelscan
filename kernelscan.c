@@ -217,7 +217,11 @@ static uint32_t fnv1a(const char *str)
 /*
  *  Initialise the parser
  */
-static inline void parser_new(parser_t *p, unsigned char *data, unsigned char *data_end, const bool skip_white_space)
+static inline void parser_new(
+	parser_t *p,
+	unsigned char *data,
+	unsigned char *data_end,
+	const bool skip_white_space)
 {
 	p->data = data;
 	p->data_end = data_end;
@@ -914,7 +918,11 @@ static void literal_strip_quotes(token_t *t)
  *  on the heap.  This returns the newly
  *  concatenated string.
  */
-static char *strdupcat(char *old, char *new, size_t *oldlen, const size_t newlen)
+static char *strdupcat(
+	char *old,
+	char *new,
+	size_t *oldlen,
+	const size_t newlen)
 {
 	char *tmp;
 
@@ -942,7 +950,11 @@ static char *strdupcat(char *old, char *new, size_t *oldlen, const size_t newlen
 /*
  *  Parse a kernel message, like printk() or dev_err()
  */
-static int parse_kernel_message(const char *path, bool *source_emit, parser_t *p, token_t *t)
+static int parse_kernel_message(
+	const char *path,
+	bool *source_emit,
+	parser_t *p,
+	token_t *t)
 {
 	bool got_string = false;
 	bool emit = false;
@@ -1035,7 +1047,11 @@ static int parse_kernel_message(const char *path, bool *source_emit, parser_t *p
 /*
  *  Parse input looking for printk or dev_err calls
  */
-static void parse_kernel_messages(const char *path, unsigned char *data, unsigned char *data_end, token_t *t)
+static void parse_kernel_messages(
+	const char *path,
+	unsigned char *data,
+	unsigned char *data_end,
+	token_t *t)
 {
 	parser_t p;
 
