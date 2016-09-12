@@ -911,6 +911,8 @@ static void literal_strip_quotes(token_t *t)
 	t->token[len - 1] = 0;
 
 	memmove(t->token, t->token + 1, len - 1);
+
+	t->ptr -= 2;
 }
 
 /*
@@ -936,7 +938,7 @@ static char *strdupcat(
 		}
 		strcpy(tmp, new);
 	} else {
-		*oldlen += newlen + 1;
+		*oldlen += newlen;
 		tmp = realloc(old, *oldlen);
 		if (UNLIKELY(tmp == NULL)) {
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
@@ -1029,17 +1031,14 @@ static int parse_kernel_message(
 			emit = true;
 		} else {
 			if (got_string) {
-				if (check_nl) {
-					size_t l = strlen(line);
-					if ((l > 1) &&
-					    (line[l - 2] == '\\') &&
-					    (line[l - 1] == 'n')) {
-						nl = true;
-					}
+				if ((check_nl) &&
+				    (line_len > 2) &&
+				    (line[line_len - 3] == '\\') &&
+				    (line[line_len - 2] == 'n')) {
+					nl = true;
 				}
 				line = strdupcat(line, "\"", &line_len, 1);
 			}
-
 			got_string = false;
 
 			if (str) {
