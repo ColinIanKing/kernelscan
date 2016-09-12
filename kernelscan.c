@@ -34,6 +34,7 @@
 #include <fcntl.h>
 
 #define OPT_ESCAPE_STRIP	0x00000001
+#define OPT_MISSING_NEWLINE	0x00000002
 
 #define UNLIKELY(c)		__builtin_expect((c), 0)
 #define LIKELY(c)		__builtin_expect((c), 1)
@@ -959,6 +960,8 @@ static int parse_kernel_message(
 	bool got_string = false;
 	bool emit = false;
 	bool found = false;
+	bool nl = false;
+	bool check_nl = ((opt_flags & OPT_MISSING_NEWLINE) != 0);
 	char *str = NULL;
 	char *line = NULL;
 	size_t line_len = 0;
@@ -998,6 +1001,9 @@ static int parse_kernel_message(
 		 *  Hit ; so lets push out what we've parsed
 		 */
 		if (t->type == TOKEN_TERMINAL) {
+			if (check_nl & nl) {
+				emit = false;
+			}
 			if (emit) {
 				if (! *source_emit) {
 					printf("Source: %s\n", path);
@@ -1022,8 +1028,17 @@ static int parse_kernel_message(
 			got_string = true;
 			emit = true;
 		} else {
-			if (got_string)
+			if (got_string) {
+				if (check_nl) {
+					size_t l = strlen(line);
+					if ((l > 1) &&
+					    (line[l - 2] == '\\') &&
+					    (line[l - 1] == 'n')) {
+						nl = true;
+					}
+				}
 				line = strdupcat(line, "\"", &line_len, 1);
+			}
 
 			got_string = false;
 
@@ -1079,6 +1094,8 @@ static void show_usage(void)
 	fprintf(stderr, "kernelscan: the fast kernel source message scanner\n\n");
 	fprintf(stderr, "kernelscan [-e] path\n");
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
+	fprintf(stderr, "  -h     show this help\n");
+	fprintf(stderr, "  -n     find messages with missing \\n newline\n");
 }
 
 static int parse_dir(const char *path, token_t *t)
@@ -1163,7 +1180,7 @@ int main(int argc, char **argv)
 	token_t t;
 
 	for (;;) {
-		int c = getopt(argc, argv, "eh");
+		int c = getopt(argc, argv, "ehn");
 		if (c == -1)
  			break;
 		switch (c) {
@@ -1173,6 +1190,9 @@ int main(int argc, char **argv)
 		case 'h':
 			show_usage();
 			exit(EXIT_SUCCESS);
+		case 'n':
+			opt_flags |= OPT_MISSING_NEWLINE;
+			break;
 		default:
 			show_usage();
 			exit(EXIT_FAILURE);
