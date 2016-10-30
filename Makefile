@@ -19,6 +19,16 @@ BINDIR=/usr/bin
 
 CFLAGS += -O3 -Wall -Wextra
 
+#
+# Pedantic flags
+#
+ifeq ($(PEDANTIC),1)
+CFLAGS += -Wabi -Wcast-qual -Wfloat-equal -Wmissing-declarations \
+	-Wmissing-format-attribute -Wno-long-long -Wpacked \
+	-Wredundant-decls -Wshadow -Wno-missing-field-initializers \
+	-Wno-missing-braces -Wno-sign-compare -Wno-multichar
+endif
+
 kernelscan: kernelscan.o Makefile
 	$(CC) $< -o $@
 
