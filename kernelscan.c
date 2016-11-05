@@ -234,7 +234,6 @@ static inline void parser_new(
 static inline int get_char(parser_t *p)
 {
 	if (LIKELY(p->ptr < p->data_end)) {
-		__builtin_prefetch(p->ptr + 64, 1, 1);
 		return *(p->ptr++);
 	} else
 		return PARSER_EOF;
@@ -886,6 +885,8 @@ static get_token_action_t get_token_actions[] = {
 static int get_token(parser_t *p, token_t *t)
 {
 	for (;;) {
+		__builtin_prefetch(p->ptr, 1, 1);
+
 		const int ch = get_char(p);
 		const get_token_action_t action = get_token_actions[ch];
 		register int ret;
@@ -946,7 +947,7 @@ static char *strdupcat(
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
 			exit(EXIT_FAILURE);
 		}
-		strcat(tmp, new);
+		__builtin_strcat(tmp, new);
 	}
 
 	return tmp;
@@ -1146,7 +1147,7 @@ static int parse_file(const char *path, token_t *t)
 	lineno = 0;
 
 	if (S_ISREG(buf.st_mode)) {
-		size_t len = strlen(path);
+		size_t len = __builtin_strlen(path);
 
 		if (((len >= 2) && !__builtin_strcmp(path + len - 2, ".c")) ||
 		    ((len >= 2) && !__builtin_strcmp(path + len - 2, ".h")) ||
