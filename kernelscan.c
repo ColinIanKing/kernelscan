@@ -96,10 +96,12 @@ static uint64_t files = 0;
 static uint64_t lines = 0;
 static uint64_t lineno = 0;
 static unsigned int hash_size;
+static unsigned int hash_log2;
+static unsigned int hash_mask;
 static uint32_t opt_flags;
 static bool whitespace_after_newline = true;
 
-static char *funcs[] = {
+static const char *funcs[] = {
 	"printk",
 	"PRINTK",
 	"dprintk",
@@ -194,26 +196,22 @@ static char *funcs[] = {
 	NULL
 };
 
-#define TABLE_SIZE	(1000)
+#define TABLE_SIZE	(65536)
 
-static char *hash_funcs[TABLE_SIZE];
+static const char *hash_funcs[TABLE_SIZE];
 
 static int parse_file(const char *path, token_t *t);
 
-static uint32_t fnv1a(const char *str)
+static uint32_t djb2a(const char *str)
 {
-        const uint32_t fnv_prime = 16777619; /* 2^24 + 2^9 + 0x93 */
         register uint32_t c;
         register uint32_t hash = 5381;
 
-        while (LIKELY(c = *str++)) {
-                hash ^= c;
-                hash *= fnv_prime;
-        }
+        while (LIKELY(c = *str++))
+                hash = (hash * 33) ^ c;
+
         return hash;
 }
-
-
 
 /*
  *  Initialise the parser
@@ -310,7 +308,7 @@ static inline void token_expand(token_t *t)
 	t->token_end += TOKEN_CHUNK_SIZE;
 	t->token = realloc(t->token, t->len);
 	if (UNLIKELY(t->token == NULL)) {
-		fprintf(stderr, "token_append: Out of memory!\n");
+		fprintf(stderr, "token_expand: Out of memory!\n");
 		exit(EXIT_FAILURE);
 	}
 	t->ptr = t->token + diff;
@@ -321,15 +319,19 @@ static inline void token_expand(token_t *t)
  *  we may run out of space, so this occasionally
  *  adds an extra 1K of token space for long tokens
  */
-static void token_append(token_t *t, const int ch)
+static inline void token_append(token_t *t, const int ch)
 {
+	register char *ptr;
+
 	if (UNLIKELY(t->ptr > t->token_end))
 		token_expand(t);
 
+	ptr = t->ptr;
+
 	/* Enough space, just add char */
-	*(t->ptr) = ch;
-	t->ptr++;
-	*(t->ptr) = 0;
+	*(ptr) = ch;
+	*(++ptr) = '\0';
+	t->ptr = ptr;
 
 	if (ch == ' ' || ch == '\n' || ch == '\t')
 		return;
@@ -922,8 +924,8 @@ static void literal_strip_quotes(token_t *t)
  *  concatenated string.
  */
 static char *strdupcat(
-	char *old,
-	char *new,
+	char *restrict old,
+	char *restrict new,
 	size_t *oldlen,
 	const size_t newlen)
 {
@@ -936,7 +938,7 @@ static char *strdupcat(
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
 			exit(EXIT_FAILURE);
 		}
-		strcpy(tmp, new);
+		__builtin_strcpy(tmp, new);
 	} else {
 		*oldlen += newlen;
 		tmp = realloc(old, *oldlen);
@@ -1075,10 +1077,10 @@ static void parse_kernel_messages(
 	token_clear(t);
 
 	while ((get_token(&p, t)) != PARSER_EOF) {
-		register unsigned int h = fnv1a(t->token) % hash_size;
-		char *hf = hash_funcs[h];
+		register unsigned int h = djb2a(t->token) & hash_mask;
+		const char *hf = hash_funcs[h];
 
-		if (hf && !strcmp(t->token, hf))
+		if (hf && !__builtin_strcmp(t->token, hf))
 			parse_kernel_message(path, &source_emit, &p, t);
 		else
 			token_clear(t);
@@ -1110,9 +1112,9 @@ static int parse_dir(const char *path, token_t *t)
 	while ((d = readdir(dp)) != NULL) {
 		char filepath[PATH_MAX];
 
-		if (!strcmp(d->d_name, "."))
+		if (!__builtin_strcmp(d->d_name, "."))
 			continue;
-		if (!strcmp(d->d_name, ".."))
+		if (!__builtin_strcmp(d->d_name, ".."))
 			continue;
 
 		snprintf(filepath, sizeof(filepath), "%s/%s", path, d->d_name);
@@ -1146,9 +1148,9 @@ static int parse_file(const char *path, token_t *t)
 	if (S_ISREG(buf.st_mode)) {
 		size_t len = strlen(path);
 
-		if (((len >= 2) && !strcmp(path + len - 2, ".c")) ||
-		    ((len >= 2) && !strcmp(path + len - 2, ".h")) ||
-		    ((len >= 4) && !strcmp(path + len - 4, ".cpp"))) {
+		if (((len >= 2) && !__builtin_strcmp(path + len - 2, ".c")) ||
+		    ((len >= 2) && !__builtin_strcmp(path + len - 2, ".h")) ||
+		    ((len >= 4) && !__builtin_strcmp(path + len - 4, ".cpp"))) {
 			if (LIKELY(buf.st_size > 0)) {
 				unsigned char *data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
 					MAP_SHARED | MAP_POPULATE, fd, 0);
@@ -1199,13 +1201,13 @@ int main(int argc, char **argv)
 	}
 
 	/* Find optimal hash table size */
-	for (hash_size = 684; hash_size < TABLE_SIZE; hash_size++) {
+	for (hash_log2 = 6, hash_size = 1 << hash_log2; hash_size < TABLE_SIZE; hash_log2++, hash_size <<= 1) {
 		bool collision = false;
 
 		memset(hash_funcs, 0, sizeof(hash_funcs));
 
 		for (i = 0; funcs[i]; i++) {
-			unsigned int h = fnv1a(funcs[i]) % hash_size;
+			unsigned int h = djb2a(funcs[i]) % hash_size;
 
 			if (hash_funcs[h]) {
 				collision = true;
@@ -1220,6 +1222,7 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Increase TABLE_SIZE for hash table\n");
 		exit(EXIT_FAILURE);
 	}
+	hash_mask = hash_size - 1;
 
 	token_new(&t);
 	while (argc > optind) {
