@@ -45,6 +45,7 @@
 #define PARSER_CONTINUE		(512)
 
 #define TOKEN_CHUNK_SIZE	(16384)
+#define TABLE_SIZE		(65536)
 
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
@@ -100,6 +101,8 @@ static unsigned int hash_log2;
 static unsigned int hash_mask;
 static uint32_t opt_flags;
 static bool whitespace_after_newline = true;
+
+static const char *hash_funcs[TABLE_SIZE];
 
 static const char *funcs[] = {
 	"printk",
@@ -195,10 +198,6 @@ static const char *funcs[] = {
 	"kvasprintf",
 	NULL
 };
-
-#define TABLE_SIZE	(65536)
-
-static const char *hash_funcs[TABLE_SIZE];
 
 static int parse_file(const char *path, token_t *t);
 
@@ -913,7 +912,7 @@ static void literal_strip_quotes(token_t *t)
 
 	t->token[len - 1] = 0;
 
-	memmove(t->token, t->token + 1, len - 1);
+	__builtin_memmove(t->token, t->token + 1, len - 1);
 
 	t->ptr -= 2;
 }
@@ -1205,7 +1204,7 @@ int main(int argc, char **argv)
 	for (hash_log2 = 6, hash_size = 1 << hash_log2; hash_size < TABLE_SIZE; hash_log2++, hash_size <<= 1) {
 		bool collision = false;
 
-		memset(hash_funcs, 0, sizeof(hash_funcs));
+		__builtin_memset(hash_funcs, 0, sizeof(hash_funcs));
 
 		for (i = 0; funcs[i]; i++) {
 			unsigned int h = djb2a(funcs[i]) % hash_size;
