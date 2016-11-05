@@ -17,7 +17,7 @@
 #
 BINDIR=/usr/bin
 
-CFLAGS += -O3 -Wall -Wextra
+CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program
 
 #
 # Pedantic flags
