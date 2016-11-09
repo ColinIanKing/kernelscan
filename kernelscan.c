@@ -911,7 +911,7 @@ static get_token_action_t get_token_actions[] = {
 static int get_token(parser_t *p, token_t *t)
 {
 	for (;;) {
-		__builtin_prefetch(p->ptr, 1, 1);
+		__builtin_prefetch(p->ptr, 0, 1);
 
 		const int ch = get_char(p);
 		const get_token_action_t action = get_token_actions[ch];
@@ -1191,6 +1191,7 @@ static int parse_file(const char *path, token_t *t)
 						path, errno, strerror(errno));
 					return -1;
 				}
+				__builtin_prefetch(data, 0, 1);
 				parse_kernel_messages(path, data, data + buf.st_size, t);
 				(void)munmap(data, (size_t)buf.st_size);
 			}
