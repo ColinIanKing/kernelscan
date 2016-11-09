@@ -45,7 +45,9 @@
 #define PARSER_CONTINUE		(512)
 
 #define TOKEN_CHUNK_SIZE	(16384)
-#define TABLE_SIZE		(65536)
+#define TABLE_SIZE		(1024)
+#define HASH_MASK		(TABLE_SIZE - 1)
+#define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
 
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
@@ -96,27 +98,43 @@ static uint64_t finds = 0;
 static uint64_t files = 0;
 static uint64_t lines = 0;
 static uint64_t lineno = 0;
-static unsigned int hash_size;
-static unsigned int hash_log2;
-static unsigned int hash_mask;
 static uint32_t opt_flags;
 static bool whitespace_after_newline = true;
 
-static const char *hash_funcs[TABLE_SIZE];
+typedef struct hash_entry {
+	struct hash_entry *next;
+	const char *token;
+} hash_entry_t;
 
-static const char *funcs[] = {
+static hash_entry_t *hash_printks[TABLE_SIZE];
+
+static const char *printks[] = {
 	"printk",
 	"PRINTK",
 	"dprintk",
+	"dprintk_pte",
 	"sdev_printk",
 	"printf",
 	"early_printk",
 	"vprintk_emit",
 	"vprintk",
+	"printf_alart",
+	"printf_crit",
+	"printf_err",
+	"printf_warning",
+	"printf_notice",
+	"printf_info",
+	"printf_debug",
+	"printf",
 	"printk_emit",
 	"printk_once",
 	"printk_deferred",
 	"printk_deferred_once",
+	"PRINT_DEBUG",
+	"PRINT_INFO",
+	"PRINT_WARN",
+	"PRINT_ERR",
+	"PRINT_FATAL",
 	"pr_emerg",
 	"pr_alert",
 	"pr_crit",
@@ -126,6 +144,7 @@ static const char *funcs[] = {
 	"pr_notice",
 	"pr_info",
 	"pr_cont",
+	"pr_hard",
 	"pr_devel",
 	"pr_debug",
 	"pr_emerg_once",
@@ -196,7 +215,15 @@ static const char *funcs[] = {
 	"st_printk",
 	"DEBUG",
 	"kvasprintf",
-	NULL
+	"setup_early_printk",
+	"verbose_printk",
+	"_debug_bug_printk",
+	"DEBUGP",
+	"DBG",
+	"Dprintk",
+	"mprintk",
+	"err_printk",
+	"kdebug",
 };
 
 static int parse_file(const char *path, token_t *t);
@@ -209,7 +236,7 @@ static uint32_t djb2a(const char *str)
         while (LIKELY(c = *str++))
                 hash = (hash * 33) ^ c;
 
-        return hash;
+        return hash & HASH_MASK;
 }
 
 /*
@@ -906,7 +933,7 @@ static int get_token(parser_t *p, token_t *t)
  *  Literals such as "foo" and 'f' sometimes
  *  need the quotes stripping off.
  */
-static void literal_strip_quotes(token_t *t)
+static inline void literal_strip_quotes(token_t *t)
 {
 	size_t len = token_len(t);
 
@@ -1077,13 +1104,17 @@ static void parse_kernel_messages(
 	token_clear(t);
 
 	while ((get_token(&p, t)) != PARSER_EOF) {
-		register unsigned int h = djb2a(t->token) & hash_mask;
-		const char *hf = hash_funcs[h];
+		register unsigned int h = djb2a(t->token);
+		hash_entry_t *hf = hash_printks[h];
 
-		if (hf && !__builtin_strcmp(t->token, hf))
-			parse_kernel_message(path, &source_emit, &p, t);
-		else
-			token_clear(t);
+		while (hf) {
+			if (!__builtin_strcmp(t->token, hf->token)) {
+				parse_kernel_message(path, &source_emit, &p, t);
+				break;
+			}
+			hf = hf->next;
+		}
+		token_clear(t);
 	}
 
 	if (source_emit)
@@ -1179,6 +1210,8 @@ int main(int argc, char **argv)
 {
 	size_t i;
 	token_t t;
+	hash_entry_t he_table[SIZEOF_ARRAY(printks)];
+	hash_entry_t *he = he_table;
 
 	for (;;) {
 		int c = getopt(argc, argv, "ehn");
@@ -1200,29 +1233,15 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* Find optimal hash table size */
-	for (hash_log2 = 6, hash_size = 1 << hash_log2; hash_size < TABLE_SIZE; hash_log2++, hash_size <<= 1) {
-		bool collision = false;
+	__builtin_memset(hash_printks, 0, sizeof(hash_printks));
+	for (i = 0; i < SIZEOF_ARRAY(printks); i++) {
+		register const unsigned int h = djb2a(printks[i]);
 
-		__builtin_memset(hash_funcs, 0, sizeof(hash_funcs));
-
-		for (i = 0; funcs[i]; i++) {
-			unsigned int h = djb2a(funcs[i]) % hash_size;
-
-			if (hash_funcs[h]) {
-				collision = true;
-				break;
-			}
-			hash_funcs[h] = funcs[i];
-		}
-		if (!collision)
-			break;
+		he->token = printks[i];
+		he->next = hash_printks[h];
+		hash_printks[h] = he;
+		he++;
 	}
-	if (hash_size == TABLE_SIZE) {
-		fprintf(stderr, "Increase TABLE_SIZE for hash table\n");
-		exit(EXIT_FAILURE);
-	}
-	hash_mask = hash_size - 1;
 
 	token_new(&t);
 	while (argc > optind) {
