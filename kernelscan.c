@@ -30,6 +30,7 @@
 #include <inttypes.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 
@@ -48,6 +49,27 @@
 #define TABLE_SIZE		(1024)
 #define HASH_MASK		(TABLE_SIZE - 1)
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
+
+#define _VER_(major, minor, patchlevel)			\
+	((major * 10000) + (minor * 100) + patchlevel)
+
+#if defined(__GNUC__) && defined(__GNUC_MINOR__)
+#if defined(__GNUC_PATCHLEVEL__)
+#define NEED_GNUC(major, minor, patchlevel) 			\
+	_VER_(major, minor, patchlevel) <= _VER_(__GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__)
+#else
+#define NEED_GNUC(major, minor, patchlevel) 			\
+	_VER_(major, minor, patchlevel) <= _VER_(__GNUC__, __GNUC_MINOR__, 0)
+#endif
+#else
+#define NEED_GNUC(major, minor, patchlevel) 	(0)
+#endif
+
+#if defined(__GNUC__) && NEED_GNUC(4,6,0)
+#define HOT __attribute__ ((hot))
+#else
+#define HOT
+#endif
 
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
@@ -228,7 +250,25 @@ static const char *printks[] = {
 
 static int parse_file(const char *path, token_t *t);
 
-static uint32_t djb2a(const char *str)
+/*
+ *  gettime_to_double()
+ *      get time as a double
+ */
+static double gettime_to_double(void)
+{
+	struct timeval tv;
+
+	if (gettimeofday(&tv, NULL) < 0)
+		return 0.0;
+
+	return (double)tv.tv_sec + ((double)tv.tv_usec / 1000000.0);
+}
+
+/*
+ *  djb2a()
+ *	relatively fast string hash
+ */
+static uint32_t HOT djb2a(const char *str)
 {
         register uint32_t c;
         register uint32_t hash = 5381;
@@ -257,7 +297,7 @@ static inline void parser_new(
 /*
  *  Get next character from input stream
  */
-static inline int get_char(parser_t *p)
+static inline int HOT get_char(parser_t *p)
 {
 	if (LIKELY(p->ptr < p->data_end)) {
 		return *(p->ptr++);
@@ -269,7 +309,7 @@ static inline int get_char(parser_t *p)
  *  Push character back onto the input
  *  stream (in this case, it is a simple FIFO stack
  */
-static inline void unget_char(parser_t *p)
+static inline void HOT unget_char(parser_t *p)
 {
 	if (LIKELY(p->ptr > p->data))
 		p->ptr--;
@@ -278,7 +318,7 @@ static inline void unget_char(parser_t *p)
 /*
  *  Get length of token
  */
-static inline size_t token_len(token_t *t)
+static inline size_t HOT token_len(token_t *t)
 {
 	return t->ptr - t->token;
 }
@@ -344,7 +384,7 @@ static inline void token_expand(token_t *t)
  *  we may run out of space, so this occasionally
  *  adds an extra 1K of token space for long tokens
  */
-static inline void token_append(token_t *t, const int ch)
+static inline void HOT token_append(token_t *t, const int ch)
 {
 	register char *ptr;
 
@@ -528,7 +568,7 @@ static int parse_number(parser_t *p, token_t *t, int ch)
 /*
  *  Parse identifiers
  */
-static int parse_identifier(parser_t *p, token_t *t, int ch)
+static int HOT parse_identifier(parser_t *p, token_t *t, int ch)
 {
 	t->type = TOKEN_IDENTIFIER;
 	token_append(t, ch);
@@ -908,7 +948,7 @@ static get_token_action_t get_token_actions[] = {
 /*
  *  Gather a token from input stream
  */
-static int get_token(parser_t *p, token_t *t)
+static int HOT get_token(parser_t *p, token_t *t)
 {
 	for (;;) {
 		__builtin_prefetch(p->ptr, 0, 1);
@@ -1156,7 +1196,7 @@ static int parse_dir(const char *path, token_t *t)
 	return 0;
 }
 
-static int parse_file(const char *path, token_t *t)
+static int HOT parse_file(const char *path, token_t *t)
 {
 	struct stat buf;
 	int fd;
@@ -1211,6 +1251,7 @@ int main(int argc, char **argv)
 {
 	size_t i;
 	token_t t;
+	double t1, t2;
 	hash_entry_t he_table[SIZEOF_ARRAY(printks)];
 	hash_entry_t *he = he_table;
 
@@ -1245,15 +1286,18 @@ int main(int argc, char **argv)
 	}
 
 	token_new(&t);
+	t1 = gettime_to_double();
 	while (argc > optind) {
 		parse_file(argv[optind], &t);
 		optind++;
 	}
+	t2 = gettime_to_double();
 	token_free(&t);
 
 	printf("\n%" PRIu64 " files scanned\n", files);
 	printf("%" PRIu64 " lines scanned\n", lines);
 	printf("%" PRIu64 " statements found\n", finds);
+	printf("scanned %.2f lines per second\n", (double)lines / (t2 - t1));
 
 	exit(EXIT_SUCCESS);
 }
