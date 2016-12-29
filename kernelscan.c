@@ -2011,10 +2011,12 @@ static void parse_kernel_messages(
 static void show_usage(void)
 {
 	fprintf(stderr, "kernelscan: the fast kernel source message scanner\n\n");
-	fprintf(stderr, "kernelscan [-e] path\n");
+	fprintf(stderr, "kernelscan [options] path\n");
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
 	fprintf(stderr, "  -h     show this help\n");
 	fprintf(stderr, "  -n     find messages with missing \\n newline\n");
+	fprintf(stderr, "  -s     just print literal strings\n");
+	fprintf(stderr, "  -x     exclude the source file name from the output\n");
 }
 
 static int parse_dir(const char *path, token_t *t)
