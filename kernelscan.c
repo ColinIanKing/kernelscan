@@ -36,6 +36,8 @@
 
 #define OPT_ESCAPE_STRIP	0x00000001
 #define OPT_MISSING_NEWLINE	0x00000002
+#define OPT_LITERAL_STRINGS	0x00000004
+#define OPT_SOURCE_NAME		0x00000008
 
 #define UNLIKELY(c)		__builtin_expect((c), 0)
 #define LIKELY(c)		__builtin_expect((c), 1)
@@ -114,22 +116,58 @@ typedef struct {
 	bool skip_white_space;	/* Magic skip white space flag */
 } parser_t;
 
+
+/*
+ *  Hash table entry (linked list of tokens)
+ */
+typedef struct hash_entry {
+	struct hash_entry *next;
+	const char *token;
+} hash_entry_t;
+
 typedef int (*get_token_action_t)(parser_t *p, token_t *t, int ch);
 
 static uint64_t finds = 0;
 static uint64_t files = 0;
 static uint64_t lines = 0;
 static uint64_t lineno = 0;
-static uint32_t opt_flags;
+static uint32_t opt_flags = OPT_SOURCE_NAME;
 static bool whitespace_after_newline = true;
+static char *(*strdupcat)(char *restrict old, token_t *restrict new, size_t *oldlen);
+static char quotes[] = "\"";
+static char space[] = " ";
 
-typedef struct hash_entry {
-	struct hash_entry *next;
-	const char *token;
-} hash_entry_t;
+/*
+ *  Literal string " token
+ */
+static token_t token_quotes = {
+	quotes + 1,
+	quotes,
+	quotes + 1,
+	1,
+	TOKEN_LITERAL_STRING
+};
 
+/*
+ *  White space token
+ */
+static token_t token_space = {
+	space + 1,
+	space,
+	space + 1,
+	1,
+	TOKEN_WHITE_SPACE
+};
+
+/*
+ *  hash table of printk like functions to scan for
+ */
 static hash_entry_t *hash_printks[TABLE_SIZE];
 
+/*
+ *  various printk like functions to populate the
+ *  hash_printks hash table
+ */
 static const char *printks[] = {
 	"ACPI_BIOS_ERROR",
 	"ACPI_BIOS_WARNING",
@@ -1779,13 +1817,13 @@ static inline void literal_strip_quotes(token_t *t)
  *  on the heap.  This returns the newly
  *  concatenated string.
  */
-static char *strdupcat(
+static char *strdupcat_normal(
 	char *restrict old,
-	char *restrict new,
-	size_t *oldlen,
-	const size_t newlen)
+	token_t *restrict new,
+	size_t *oldlen)
 {
 	char *tmp;
+	const size_t newlen = token_len(new);
 
 	if (UNLIKELY(old == NULL)) {
 		*oldlen = newlen + 1;
@@ -1794,7 +1832,7 @@ static char *strdupcat(
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
 			exit(EXIT_FAILURE);
 		}
-		__builtin_strcpy(tmp, new);
+		__builtin_strcpy(tmp, new->token);
 	} else {
 		*oldlen += newlen;
 		tmp = realloc(old, *oldlen);
@@ -1802,11 +1840,29 @@ static char *strdupcat(
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
 			exit(EXIT_FAILURE);
 		}
-		__builtin_strcat(tmp, new);
+		__builtin_strcat(tmp, new->token);
 	}
 
 	return tmp;
 }
+
+/*
+ *  Concatenate new string onto old. The old
+ *  string can be NULL or an existing string
+ *  on the heap.  This returns the newly
+ *  concatenated string.
+ */
+static char *strdupcat_just_literal_string(
+	char *restrict old,
+	token_t *restrict new,
+	size_t *oldlen)
+{
+	if (new->type == TOKEN_LITERAL_STRING)
+		return strdupcat_normal(old, new, oldlen);
+
+	return old;
+}
+
 
 /*
  *  Parse a kernel message, like printk() or dev_err()
@@ -1827,7 +1883,7 @@ static int parse_kernel_message(
 	size_t line_len = 0;
 	size_t str_len;
 
-	line = strdupcat(line, t->token, &line_len, token_len(t));
+	line = strdupcat(line, t, &line_len);
 	token_clear(t);
 	if (UNLIKELY(get_token(p, t) == PARSER_EOF)) {
 		free(line);
@@ -1844,7 +1900,7 @@ static int parse_kernel_message(
 		token_clear(t);
 		return PARSER_OK;
 	}
-	line = strdupcat(line, t->token, &line_len, token_len(t));
+	line = strdupcat(line, t, &line_len);
 	token_clear(t);
 
 	str_len = 0;
@@ -1866,10 +1922,12 @@ static int parse_kernel_message(
 			}
 			if (emit) {
 				if (! *source_emit) {
-					printf("Source: %s\n", path);
+					if (opt_flags & OPT_SOURCE_NAME)
+						printf("Source: %s\n", path);
 					*source_emit = true;
 				}
-				printf("%s;\n", line);
+				printf("%s%s\n", line,
+					(opt_flags & OPT_LITERAL_STRINGS) ? "" : ";");
 				finds++;
 			}
 			free(line);
@@ -1880,10 +1938,10 @@ static int parse_kernel_message(
 
 		if (t->type == TOKEN_LITERAL_STRING) {
 			literal_strip_quotes(t);
-			str = strdupcat(str, t->token, &str_len, token_len(t));
+			str = strdupcat(str, t, &str_len);
 
 			if (!got_string)
-				line = strdupcat(line, "\"", &line_len, 1);
+				line = strdupcat(line, &token_quotes, &line_len);
 
 			got_string = true;
 			emit = true;
@@ -1895,7 +1953,7 @@ static int parse_kernel_message(
 				    (line[line_len - 2] == 'n')) {
 					nl = true;
 				}
-				line = strdupcat(line, "\"", &line_len, 1);
+				line = strdupcat(line, &token_quotes, &line_len);
 			}
 			got_string = false;
 
@@ -1907,9 +1965,9 @@ static int parse_kernel_message(
 			}
 		}
 
-		line = strdupcat(line, t->token, &line_len, token_len(t));
+		line = strdupcat(line, t, &line_len);
 		if (t->type == TOKEN_COMMA)
-			line = strdupcat(line, " ", &line_len, 1);
+			line = strdupcat(line, &token_space, &line_len);
 
 		token_clear(t);
 	}
@@ -1946,7 +2004,7 @@ static void parse_kernel_messages(
 		token_clear(t);
 	}
 
-	if (source_emit)
+	if (source_emit && (opt_flags & OPT_SOURCE_NAME))
 		putchar('\n');
 }
 
@@ -2044,8 +2102,10 @@ int main(int argc, char **argv)
 	hash_entry_t he_table[SIZEOF_ARRAY(printks)];
 	hash_entry_t *he = he_table;
 
+	strdupcat = strdupcat_normal;
+
 	for (;;) {
-		int c = getopt(argc, argv, "ehn");
+		int c = getopt(argc, argv, "ehnsx");
 		if (c == -1)
  			break;
 		switch (c) {
@@ -2057,6 +2117,13 @@ int main(int argc, char **argv)
 			exit(EXIT_SUCCESS);
 		case 'n':
 			opt_flags |= OPT_MISSING_NEWLINE;
+			break;
+		case 's':
+			opt_flags |= OPT_LITERAL_STRINGS;
+			strdupcat = strdupcat_just_literal_string;
+			break;
+		case 'x':
+			opt_flags &= ~OPT_SOURCE_NAME;
 			break;
 		default:
 			show_usage();
