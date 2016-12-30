@@ -2156,7 +2156,7 @@ int main(int argc, char **argv)
 	printf("%" PRIu64 " lines scanned\n", lines);
 	printf("%" PRIu64 " statements found\n", finds);
 	printf("scanned %.2f lines per second\n", (double)lines / (t2 - t1));
-	printf("(kernescan " VERSION ")\n");
+	printf("(kernelscan " VERSION ")\n");
 
 	exit(EXIT_SUCCESS);
 }
