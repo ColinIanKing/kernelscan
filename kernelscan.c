@@ -1281,12 +1281,12 @@ static int skip_comments(parser_t *p)
 			if (UNLIKELY(ch == PARSER_EOF))
 				return ch;
 
-			if (ch == '*') {
+			if (UNLIKELY(ch == '*')) {
 				ch = get_char(p);
 				if (UNLIKELY(ch == PARSER_EOF))
 					return ch;
 
-				if (ch == '/')
+				if (LIKELY(ch == '/'))
 					return PARSER_COMMENT_FOUND;
 
 				unget_char(p);
@@ -1368,14 +1368,14 @@ static int parse_number(parser_t *p, token_t *t, int ch)
 		}
 
 		if (ishex) {
-			if (isxdigit(ch)) {
+			if (LIKELY(isxdigit(ch))) {
 				token_append(t, ch);
 			} else {
 				unget_char(p);
 				return PARSER_OK;
 			}
 		} else if (isoct) {
-			if (ch >= '0' && ch <= '8') {
+			if (LIKELY(ch >= '0' && ch <= '8')) {
 				token_append(t, ch);
 			} else {
 				unget_char(p);
@@ -1653,7 +1653,7 @@ static inline int parse_backslash(parser_t *p, token_t *t, int ch)
 	} else {
 		token_append(t, ch);
 		ch = get_char(p);
-		if (ch == PARSER_EOF)
+		if (UNLIKELY(ch == PARSER_EOF))
 			return ch;
 		token_append(t, ch);
 	}
@@ -2024,7 +2024,7 @@ static int parse_dir(const char *path, token_t *t)
 	DIR *dp;
 	struct dirent *d;
 
-	if ((dp = opendir(path)) == NULL) {
+	if (UNLIKELY((dp = opendir(path)) == NULL)) {
 		fprintf(stderr, "Cannot open directory %s, errno=%d (%s)\n",
 			path, errno, strerror(errno));
 		return -1;
@@ -2032,9 +2032,7 @@ static int parse_dir(const char *path, token_t *t)
 	while ((d = readdir(dp)) != NULL) {
 		char filepath[PATH_MAX];
 
-		if (!__builtin_strcmp(d->d_name, "."))
-			continue;
-		if (!__builtin_strcmp(d->d_name, ".."))
+		if (UNLIKELY(d->d_name[0] == '.'))
 			continue;
 
 		snprintf(filepath, sizeof(filepath), "%s/%s", path, d->d_name);
@@ -2057,7 +2055,7 @@ static int HOT parse_file(const char *path, token_t *t)
 			path, errno, strerror(errno));
 		return -1;
 	}
-	if (fstat(fd, &buf) < 0) {
+	if (UNLIKELY(fstat(fd, &buf) < 0)) {
 		fprintf(stderr, "Cannot stat %s, errno=%d (%s)\n",
 			path, errno, strerror(errno));
 		(void)close(fd);
@@ -2065,15 +2063,15 @@ static int HOT parse_file(const char *path, token_t *t)
 	}
 	lineno = 0;
 
-	if (S_ISREG(buf.st_mode)) {
+	if (LIKELY(S_ISREG(buf.st_mode))) {
 		size_t len = __builtin_strlen(path);
 
-		if (((len >= 2) && !__builtin_strcmp(path + len - 2, ".c")) ||
+		if (LIKELY(((len >= 2) && !__builtin_strcmp(path + len - 2, ".c")) ||
 		    ((len >= 2) && !__builtin_strcmp(path + len - 2, ".h")) ||
-		    ((len >= 4) && !__builtin_strcmp(path + len - 4, ".cpp"))) {
+		    ((len >= 4) && !__builtin_strcmp(path + len - 4, ".cpp")))) {
 			if (LIKELY(buf.st_size > 0)) {
 				unsigned char *data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
-					MAP_SHARED | MAP_POPULATE, fd, 0);
+					MAP_PRIVATE | MAP_POPULATE, fd, 0);
 				if (UNLIKELY(data == MAP_FAILED)) {
 					(void)close(fd);
 					fprintf(stderr, "Cannot mmap %s, errno=%d (%s)\n",
@@ -2086,10 +2084,12 @@ static int HOT parse_file(const char *path, token_t *t)
 			}
 			files++;
 		}
-	} else if (S_ISDIR(buf.st_mode)) {
-		rc = parse_dir(path, t);
+		(void)close(fd);
+	} else {
+		(void)close(fd);
+		if (S_ISDIR(buf.st_mode))
+			rc = parse_dir(path, t);
 	}
-	(void)close(fd);
 	return rc;
 }
 
