@@ -1085,7 +1085,7 @@ static double gettime_to_double(void)
 {
 	struct timeval tv;
 
-	if (gettimeofday(&tv, NULL) < 0)
+	if (UNLIKELY(gettimeofday(&tv, NULL) < 0))
 		return 0.0;
 
 	return (double)tv.tv_sec + ((double)tv.tv_usec / 1000000.0);
@@ -1183,12 +1183,8 @@ static void token_new(token_t *t)
  */
 static void token_free(token_t *t)
 {
+	__builtin_memset(t, 0, sizeof(*t));
 	free(t->token);
-	t->token = NULL;
-	t->ptr = NULL;
-	t->len = 0;
-	t->token_end = NULL;
-	t->type = TOKEN_UNKNOWN;
 }
 
 static inline void token_expand(token_t *t)
