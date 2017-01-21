@@ -19,8 +19,10 @@ BINDIR=/usr/bin
 
 VERSION=0.2.1
 
-CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program
+CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program -fivopts
+
 CFLAGS += -DVERSION='"$(VERSION)"'
+LDFLAGS += -lstatic
 
 #
 # Pedantic flags
@@ -34,6 +36,7 @@ endif
 
 kernelscan: kernelscan.o Makefile
 	$(CC) $< -o $@
+	strip $@
 
 clean:
 	rm -f kernelscan.o kernelscan kernelscan*snap
