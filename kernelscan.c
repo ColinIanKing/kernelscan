@@ -1560,7 +1560,7 @@ static inline int parse_hash(parser_t *p, token_t *t, int ch)
 	skip_macros(p);
 	token_clear(t);
 
-	return PARSER_OK; //parse_simple(t, ch, TOKEN_CPP);
+	return PARSER_OK;
 }
 
 static inline int parse_paren_opened(parser_t *p, token_t *t, int ch)
