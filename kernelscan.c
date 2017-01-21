@@ -127,10 +127,10 @@ typedef struct hash_entry {
 
 typedef int (*get_token_action_t)(parser_t *p, token_t *t, int ch);
 
-static uint64_t finds = 0;
-static uint64_t files = 0;
-static uint64_t lines = 0;
-static uint64_t lineno = 0;
+static uint64_t finds;
+static uint64_t files;
+static uint64_t lines;
+static uint64_t lineno;
 static uint32_t opt_flags = OPT_SOURCE_NAME;
 static bool whitespace_after_newline = true;
 static char *(*strdupcat)(char *restrict old, token_t *restrict new, size_t *oldlen);
@@ -1095,7 +1095,7 @@ static double gettime_to_double(void)
  *  djb2a()
  *	relatively fast string hash
  */
-static uint32_t HOT djb2a(const char *str)
+static inline uint32_t HOT djb2a(const char *str)
 {
         register uint32_t c;
         register uint32_t hash = 5381;
