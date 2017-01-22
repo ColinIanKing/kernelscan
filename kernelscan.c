@@ -1773,10 +1773,8 @@ static get_token_action_t get_token_actions[] = {
 static int HOT get_token(parser_t *p, token_t *t)
 {
 	for (;;) {
-		__builtin_prefetch(p->ptr, 0, 1);
-
-		const int ch = get_char(p);
-		const get_token_action_t action = get_token_actions[ch];
+		register int ch = get_char(p);
+		register get_token_action_t action = get_token_actions[ch];
 		register int ret;
 
 		if (UNLIKELY(!action))
