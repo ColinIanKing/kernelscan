@@ -131,7 +131,7 @@ static uint64_t finds;
 static uint64_t files;
 static uint64_t lines;
 static uint64_t lineno;
-static uint32_t opt_flags = OPT_SOURCE_NAME;
+static uint8_t opt_flags = OPT_SOURCE_NAME;
 static bool whitespace_after_newline = true;
 static char *(*strdupcat)(char *restrict old, token_t *restrict new, size_t *oldlen);
 static char quotes[] = "\"";
