@@ -47,7 +47,7 @@
 #define PARSER_EOF		(256)
 #define PARSER_CONTINUE		(512)
 
-#define TOKEN_CHUNK_SIZE	(16384)
+#define TOKEN_CHUNK_SIZE	(32768)
 #define TABLE_SIZE		(16384)
 #define HASH_MASK		(TABLE_SIZE - 1)
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
