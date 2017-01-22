@@ -1221,9 +1221,8 @@ static inline void HOT token_append(token_t *t, const int ch)
 	*(++ptr) = '\0';
 	t->ptr = ptr;
 
-	if (ch == ' ' || ch == '\n' || ch == '\t')
-		return;
-	whitespace_after_newline = false;
+	if (ch != ' ' && ch != '\n' && ch != '\t')
+		whitespace_after_newline = false;
 }
 
 static int skip_macros(parser_t *p)
