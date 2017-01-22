@@ -1075,7 +1075,7 @@ static const char *printks[] = {
 };
 
 
-static int parse_file(const char *path, token_t *t);
+static int parse_file(char *path, token_t *t);
 
 /*
  *  gettime_to_double()
@@ -2015,23 +2015,39 @@ static void show_usage(void)
 	fprintf(stderr, "  -x     exclude the source file name from the output\n");
 }
 
-static int parse_dir(const char *path, token_t *t)
+static int parse_dir(char *path, token_t *t)
 {
 	DIR *dp;
 	struct dirent *d;
+	char filepath[PATH_MAX];
+	register char *ptr1, *ptr2;
 
 	if (UNLIKELY((dp = opendir(path)) == NULL)) {
 		fprintf(stderr, "Cannot open directory %s, errno=%d (%s)\n",
 			path, errno, strerror(errno));
 		return -1;
 	}
+
+	ptr1 = filepath;
+	ptr2 = path;
+
+	while ((*ptr1 = *(ptr2++)))
+		ptr1++;
+
+	*ptr1++ = '/';
+
 	while ((d = readdir(dp)) != NULL) {
-		char filepath[PATH_MAX];
+		register char *ptr;
 
 		if (UNLIKELY(d->d_name[0] == '.'))
 			continue;
 
-		snprintf(filepath, sizeof(filepath), "%s/%s", path, d->d_name);
+		ptr = ptr1;
+		ptr2 = d->d_name;
+		while ((*ptr = *(ptr2++)))
+			ptr++;
+		*ptr = '\0';
+
 		parse_file(filepath, t);
 	}
 	(void)closedir(dp);
@@ -2039,7 +2055,7 @@ static int parse_dir(const char *path, token_t *t)
 	return 0;
 }
 
-static int HOT parse_file(const char *path, token_t *t)
+static int HOT parse_file(char *path, token_t *t)
 {
 	struct stat buf;
 	int fd;
