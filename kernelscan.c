@@ -1088,7 +1088,7 @@ static double gettime_to_double(void)
 	if (UNLIKELY(gettimeofday(&tv, NULL) < 0))
 		return 0.0;
 
-	return (double)tv.tv_sec + ((double)tv.tv_usec / 1000000.0);
+	return (double)tv.tv_sec + ((double)tv.tv_usec / 1000000);
 }
 
 /*
