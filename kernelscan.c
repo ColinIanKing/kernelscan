@@ -42,6 +42,9 @@
 #define UNLIKELY(c)		__builtin_expect((c), 0)
 #define LIKELY(c)		__builtin_expect((c), 1)
 
+#define FLOAT_TINY		(0.0000001)
+#define FLOAT_CMP(a, b)		(__builtin_fabs(a - b) < FLOAT_TINY)
+
 #define PARSER_OK		(0)
 #define PARSER_COMMENT_FOUND	(1)
 #define PARSER_EOF		(256)
@@ -2164,7 +2167,8 @@ int main(int argc, char **argv)
 	printf("\n%" PRIu64 " files scanned\n", files);
 	printf("%" PRIu64 " lines scanned\n", lines);
 	printf("%" PRIu64 " statements found\n", finds);
-	printf("scanned %.2f lines per second\n", (double)lines / (t2 - t1));
+	printf("scanned %.2f lines per second\n", 
+		FLOAT_CMP(t1, t2) ? 0.0 : (double)lines / (t2 - t1));
 	printf("(kernelscan " VERSION ")\n");
 
 	exit(EXIT_SUCCESS);
