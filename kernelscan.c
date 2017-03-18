@@ -116,7 +116,7 @@ typedef struct {
 	unsigned char *ptr;		/* current data position */
 	unsigned char *data;		/* The start data being parsed */
 	unsigned char *data_end;	/* end of the data */
-	bool skip_white_space;	/* Magic skip white space flag */
+	bool skip_white_space;		/* Magic skip white space flag */
 } parser_t;
 
 
