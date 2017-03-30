@@ -2037,6 +2037,7 @@ static int parse_dir(char *path, token_t *t)
 	*ptr1++ = '/';
 
 	while ((d = readdir(dp)) != NULL) {
+		struct stat buf;
 		register char *ptr;
 
 		if (UNLIKELY(d->d_name[0] == '.'))
@@ -2048,6 +2049,11 @@ static int parse_dir(char *path, token_t *t)
 			ptr++;
 		*ptr = '\0';
 
+		if (lstat(filepath, &buf) < 0)
+			continue;
+		/* Don't follow symlinks */
+		if (S_ISLNK(buf.st_mode))
+			continue;
 		parse_file(filepath, t);
 	}
 	(void)closedir(dp);
