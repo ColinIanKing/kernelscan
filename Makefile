@@ -17,12 +17,11 @@
 #
 BINDIR=/usr/bin
 
-VERSION=0.2.2
+VERSION=0.2.4
 
 CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program -fivopts
 
 CFLAGS += -DVERSION='"$(VERSION)"'
-LDFLAGS += -lstatic
 
 #
 # Pedantic flags
