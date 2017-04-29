@@ -38,6 +38,7 @@
 #define OPT_MISSING_NEWLINE	0x00000002
 #define OPT_LITERAL_STRINGS	0x00000004
 #define OPT_SOURCE_NAME		0x00000008
+#define OPT_FORMAT_STRIP	0x00000010
 
 #define UNLIKELY(c)		__builtin_expect((c), 0)
 #define LIKELY(c)		__builtin_expect((c), 1)
@@ -139,6 +140,110 @@ static bool whitespace_after_newline = true;
 static char *(*strdupcat)(char *restrict old, token_t *restrict new, size_t *oldlen);
 static char quotes[] = "\"";
 static char space[] = " ";
+
+typedef struct {
+	char *format;
+	size_t len;
+} format_t;
+
+/*
+ *  Kernel printk format specifiers
+ */
+static format_t formats[] = {
+	{ "%", 1 },
+	{ "s", 1 },
+	{ "llu", 3 },
+	{ "lld", 3 },
+	{ "llx", 3 },
+	{ "lu", 2 },
+	{ "ld", 2 },
+	{ "lx", 2 },
+	{ "u", 1 },
+	{ "d", 1 },
+	{ "x", 1 },
+	{ "pF", 2 },
+	{ "pf", 2 },
+	{ "ps", 2 },
+	{ "pSR", 3 },
+	{ "pS", 2 },
+	{ "pB", 2 },
+	{ "pK", 2 },
+	{ "pr", 2 },
+	{ "pap", 3 },
+	{ "pa", 2 },
+	{ "pad", 3 },
+	{ "*pE", 3 },
+	{ "*pEa", 4 },
+	{ "*pEc", 4 },
+	{ "*pEh", 4 },
+	{ "*pEn", 4 },
+	{ "*pEo", 4 },
+	{ "*pEp", 4 },
+	{ "*pEs", 4 },
+	{ "*ph", 3 },
+	{ "*phC", 4 },
+	{ "*phD", 4 },
+	{ "*phN", 4 },
+	{ "pM", 2 },
+	{ "pMR", 3 },
+	{ "pMF", 3 },
+	{ "pm", 2 },
+	{ "pmR", 3 },
+	{ "pi4", 3 },
+	{ "pI4", 3 },
+	{ "pi4h", 4 },
+	{ "pI4h", 4 },
+	{ "pi4n", 4 },
+	{ "pI4n", 4 },
+	{ "pi4b", 4 },
+	{ "pI4b", 4 },
+	{ "pi4l", 4 },
+	{ "pI4l", 4 },
+	{ "pi6", 3 },
+	{ "pI6", 3 },
+	{ "pI6c", 4 },
+	{ "piS", 3 },
+	{ "pIS", 3 },
+	{ "piSc", 4 },
+	{ "pISc", 4 },
+	{ "piSpc", 5 },
+	{ "pISpc", 5 },
+	{ "piSf", 4 },
+	{ "pISf", 4 },
+	{ "piSs", 4 },
+	{ "pISs", 4 },
+	{ "piSh", 4 },
+	{ "pISh", 4 },
+	{ "piSn", 4 },
+	{ "pISn", 4 },
+	{ "piSb", 4 },
+	{ "pISb", 4 },
+	{ "piSl", 4 },
+	{ "pISl", 4 },
+	{ "pUb", 3 },
+	{ "pUB", 3 },
+	{ "pUl", 3 },
+	{ "pUL", 3 },
+	{ "pd", 2 },
+	{ "pd2", 3 },
+	{ "pd3", 3 },
+	{ "pd4", 3 },
+	{ "pD", 2 },
+	{ "pD2", 3 },
+	{ "pD3", 3 },
+	{ "pD4", 3 },
+	{ "pg", 2 },
+	{ "pV", 2 },
+	{ "pC", 2 },
+	{ "pCn", 3 },
+	{ "pCr", 3 },
+	{ "*pb", 3 },
+	{ "*pbl", 4 },
+	{ "pGp", 3 },
+	{ "pGg", 3 },
+	{ "pGv", 3 },
+	{ "pNF", 3 },
+};
 
 /*
  *  Literal string " token
@@ -1145,6 +1250,21 @@ static inline void HOT unget_char(parser_t *p)
 		p->ptr--;
 }
 
+static int cmp_format(const void *p1, const void *p2)
+{
+	format_t *f1 = (format_t *)p1;
+	format_t *f2 = (format_t *)p2;
+
+	register const size_t l1 = f1->len;
+	register const size_t l2 = f2->len;
+
+	if (l1 < l2)
+		return 1;
+	if (l1 > l2)
+		return -1;
+	return strcmp(f1->format, f2->format);
+}
+
 /*
  *  Get length of token
  */
@@ -1859,6 +1979,31 @@ static char *strdupcat_just_literal_string(
 	return old;
 }
 
+static void strip_format(char *line)
+{
+	char *ptr1 = line, *ptr2 = line;
+
+	while (*ptr1) {
+		if (UNLIKELY((*ptr1 == '%') && *(ptr1 + 1))) {
+			size_t i;
+
+			*ptr2++ = ' ';
+			ptr1++;
+
+			for (i = 0; i < SIZEOF_ARRAY(formats); i++) {
+				register const size_t len = formats[i].len;
+
+				if (UNLIKELY(!strncmp(formats[i].format, ptr1, len))) {
+					ptr1 += len;
+					break;
+				}
+			}
+		} else {
+			*ptr2++ = *ptr1++;
+		}
+	}
+	*ptr2 = '\0';
+}
 
 /*
  *  Parse a kernel message, like printk() or dev_err()
@@ -1922,6 +2067,8 @@ static int parse_kernel_message(
 						printf("Source: %s\n", path);
 					*source_emit = true;
 				}
+				if (opt_flags & OPT_FORMAT_STRIP)
+					strip_format(line);
 				printf("%s%s\n", line,
 					(opt_flags & OPT_LITERAL_STRINGS) ? "" : ";");
 				finds++;
@@ -2009,6 +2156,7 @@ static void show_usage(void)
 	fprintf(stderr, "kernelscan: the fast kernel source message scanner\n\n");
 	fprintf(stderr, "kernelscan [options] path\n");
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
+	fprintf(stderr, "  -f     replace kernel %% format specifiers with a space\n");
 	fprintf(stderr, "  -h     show this help\n");
 	fprintf(stderr, "  -n     find messages with missing \\n newline\n");
 	fprintf(stderr, "  -s     just print literal strings\n");
@@ -2125,12 +2273,15 @@ int main(int argc, char **argv)
 	strdupcat = strdupcat_normal;
 
 	for (;;) {
-		int c = getopt(argc, argv, "ehnsx");
+		int c = getopt(argc, argv, "efhnsx");
 		if (c == -1)
  			break;
 		switch (c) {
 		case 'e':
 			opt_flags |= OPT_ESCAPE_STRIP;
+			break;
+		case 'f':
+			opt_flags |= OPT_FORMAT_STRIP;
 			break;
 		case 'h':
 			show_usage();
@@ -2150,6 +2301,8 @@ int main(int argc, char **argv)
 			exit(EXIT_FAILURE);
 		}
 	}
+
+	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
 
 	__builtin_memset(hash_printks, 0, sizeof(hash_printks));
 	for (i = 0; i < SIZEOF_ARRAY(printks); i++) {
