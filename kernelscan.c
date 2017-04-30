@@ -131,6 +131,14 @@ typedef struct hash_entry {
 
 typedef int (*get_token_action_t)(parser_t *p, token_t *t, int ch);
 
+/*
+ *  printk format string table items
+ */
+typedef struct {
+	char *format;	/* printk format string */
+	size_t len;	/* length of format string */
+} format_t;
+
 static uint64_t finds;
 static uint64_t files;
 static uint64_t lines;
@@ -141,10 +149,6 @@ static char *(*strdupcat)(char *restrict old, token_t *restrict new, size_t *old
 static char quotes[] = "\"";
 static char space[] = " ";
 
-typedef struct {
-	char *format;
-	size_t len;
-} format_t;
 
 /*
  *  Kernel printk format specifiers
