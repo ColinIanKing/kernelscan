@@ -2552,7 +2552,6 @@ int main(int argc, char **argv)
 	if (opt_flags & OPT_CHECK_WORDS)
 		(void)read_dictionary("/usr/share/dict/words");
 
-	__builtin_memset(hash_printks, 0, sizeof(hash_printks));
 	for (i = 0; i < SIZEOF_ARRAY(printks); i++) {
 		register const unsigned int h = djb2a(printks[i]);
 
@@ -2561,8 +2560,6 @@ int main(int argc, char **argv)
 		hash_printks[h] = he;
 		he++;
 	}
-
-	__builtin_memset(hash_bad_spellings, 0, sizeof(hash_bad_spellings));
 
 	token_new(&t);
 	t1 = gettime_to_double();
