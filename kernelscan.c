@@ -1462,7 +1462,7 @@ static void HOT token_expand(token_t *t)
  */
 static inline void HOT token_append(token_t *t, const int ch)
 {
-	if (UNLIKELY(t->ptr >= (t->token_end - 1)))
+	if (UNLIKELY(t->ptr >= (t->token_end)))
 		token_expand(t);
 
 	/* Enough space, just add char */
