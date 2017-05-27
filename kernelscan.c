@@ -53,7 +53,7 @@
 #define PARSER_CONTINUE		(512)
 
 #define TOKEN_CHUNK_SIZE	(32768)
-#define TABLE_SIZE		(16384)
+#define TABLE_SIZE		(4*16384)
 #define HASH_MASK		(TABLE_SIZE - 1)
 
 #define MAX_WORD_NODES		(26)
@@ -138,7 +138,7 @@ typedef struct hash_entry {
 	char *token;
 } hash_entry_t;
 
-typedef int (*get_token_action_t)(parser_t *p, token_t *t, int ch);
+typedef int (*get_token_action_t)(parser_t *restrict p, token_t *restrict t, int ch);
 
 /*
  *  printk format string table items
@@ -1285,7 +1285,7 @@ static inline int HOT find_word(const char *restrict word, const word_node_t *re
 static inline void HOT add_bad_spelling(const char *word)
 {
 	register const unsigned int h = djb2a(word);
-	hash_entry_t *he = hash_bad_spellings[h];
+	register hash_entry_t *he = hash_bad_spellings[h];
 
 	while (he) {
 		if (!strcmp(he->token, word))
