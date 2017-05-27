@@ -2556,7 +2556,7 @@ int main(int argc, char **argv)
 
 	printf("\n%" PRIu64 " files scanned\n", files);
 	printf("%" PRIu64 " lines scanned\n", lines);
-	printf("%" PRIu64 " statements found\n", finds);
+	printf("%" PRIu64 " print statements found\n", finds);
 	if (bad_spellings)
 		printf("%" PRIu64 " bad spellings found\n", bad_spellings);
 	printf("scanned %.2f lines per second\n", 
