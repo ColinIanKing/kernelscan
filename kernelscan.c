@@ -147,11 +147,11 @@ typedef struct word_node {
 	bool eow;	/* end of word? true = yes */
 } word_node_t;
 
-static uint64_t finds;
-static uint64_t files;
-static uint64_t lines;
-static uint64_t lineno;
-static uint64_t bad_spellings;
+static uint32_t finds;
+static uint32_t files;
+static uint32_t lines;
+static uint32_t lineno;
+static uint32_t bad_spellings;
 
 static uint8_t opt_flags = OPT_SOURCE_NAME;
 static char *(*strdupcat)(char *restrict old, token_t *restrict new, size_t *oldlen);
@@ -1480,17 +1480,16 @@ static inline void token_expand(token_t *t)
  */
 static inline void HOT token_append(token_t *t, const int ch)
 {
-	register char *ptr;
-
-	if (UNLIKELY(t->ptr + 1 >= t->token_end))
+	if (UNLIKELY(t->ptr >= (t->token_end - 1)))
 		token_expand(t);
 
-	ptr = t->ptr;
-
 	/* Enough space, just add char */
-	*(ptr) = ch;
-	*(++ptr) = '\0';
-	t->ptr = ptr;
+	*(t->ptr++) = ch;
+}
+
+static inline void HOT token_eos(token_t *t)
+{
+	*(t->ptr) = '\0';
 }
 
 static int skip_macros(parser_t *p)
@@ -1584,6 +1583,7 @@ static int parse_number(parser_t *p, token_t *t, int ch)
 		nextch1 = get_char(p);
 		if (UNLIKELY(nextch1 == PARSER_EOF)) {
 			token_append(t, ch);
+			token_eos(t);
 			return PARSER_OK;
 		}
 
@@ -1596,6 +1596,7 @@ static int parse_number(parser_t *p, token_t *t, int ch)
 			nextch2 = get_char(p);
 			if (UNLIKELY(nextch2 == PARSER_EOF)) {
 				unget_char(p);
+				token_eos(t);
 				return PARSER_OK;
 			}
 
@@ -1608,10 +1609,12 @@ static int parse_number(parser_t *p, token_t *t, int ch)
 				/* Nope */
 				unget_char(p);
 				unget_char(p);
+				token_eos(t);
 				return PARSER_OK;
 			}
 		} else {
 			unget_char(p);
+			token_eos(t);
 			return PARSER_OK;
 		}
 	}
@@ -1627,6 +1630,7 @@ static int parse_number(parser_t *p, token_t *t, int ch)
 
 		if (UNLIKELY(ch == PARSER_EOF)) {
 			unget_char(p);
+			token_eos(t);
 			return PARSER_OK;
 		}
 
@@ -1635,6 +1639,7 @@ static int parse_number(parser_t *p, token_t *t, int ch)
 				token_append(t, ch);
 			} else {
 				unget_char(p);
+				token_eos(t);
 				return PARSER_OK;
 			}
 		} else if (isoct) {
@@ -1642,6 +1647,7 @@ static int parse_number(parser_t *p, token_t *t, int ch)
 				token_append(t, ch);
 			} else {
 				unget_char(p);
+				token_eos(t);
 				return PARSER_OK;
 			}
 		} else {
@@ -1649,6 +1655,7 @@ static int parse_number(parser_t *p, token_t *t, int ch)
 				token_append(t, ch);
 			} else {
 				unget_char(p);
+				token_eos(t);
 				return PARSER_OK;
 			}
 		}
@@ -1671,6 +1678,7 @@ static int HOT parse_identifier(parser_t *p, token_t *t, int ch)
 		}
 
 		unget_char(p);
+		token_eos(t);
 		return PARSER_OK;
 	}
 }
@@ -1690,14 +1698,18 @@ static int parse_literal(
 
 	for (;;) {
 		int ch = get_char(p);
-		if (UNLIKELY(ch == PARSER_EOF))
+		if (UNLIKELY(ch == PARSER_EOF)) {
+			token_eos(t);
 			return PARSER_OK;
+		}
 
 		if (ch == '\\') {
 			if (opt_flags & OPT_ESCAPE_STRIP) {
 				ch = get_char(p);
-				if (UNLIKELY(ch == PARSER_EOF))
+				if (UNLIKELY(ch == PARSER_EOF)) {
+					token_eos(t);
 					return ch;
+				}
 				switch (ch) {
 				case '?':
 					token_append(t, ch);
@@ -1732,8 +1744,10 @@ static int parse_literal(
 			} else {
 				token_append(t, ch);
 				ch = get_char(p);
-				if (UNLIKELY(ch == PARSER_EOF))
+				if (UNLIKELY(ch == PARSER_EOF)) {
+					token_eos(t);
 					return ch;
+				}
 				token_append(t, ch);
 				continue;
 			}
@@ -1741,11 +1755,13 @@ static int parse_literal(
 
 		if (UNLIKELY(ch == literal)) {
 			token_append(t, ch);
+			token_eos(t);
 			return PARSER_OK;
 		}
 
 		token_append(t, ch);
 	}
+	token_eos(t);
 
 	return PARSER_OK;
 }
@@ -1764,10 +1780,12 @@ static inline int parse_op(parser_t *p, token_t *t, int op)
 
 	if (ch == op) {
 		token_append(t, op);
+		token_eos(t);
 		return PARSER_OK;
 	}
 
 	unget_char(p);
+	token_eos(t);
 	return PARSER_OK;
 }
 
@@ -1784,16 +1802,19 @@ static inline int parse_minus(parser_t *p, token_t *t, int op)
 
 	if (ch == op) {
 		token_append(t, ch);
+		token_eos(t);
 		return PARSER_OK;
 	}
 
 	if (ch == '>') {
 		token_append(t, ch);
+		token_eos(t);
 		t->type = TOKEN_ARROW;
 		return PARSER_OK;
 	}
 
 	unget_char(p);
+	token_eos(t);
 	return PARSER_OK;
 }
 
@@ -1809,12 +1830,14 @@ static inline int parse_skip_comments(parser_t *p, token_t *t, int ch)
 		return ret;
 	}
 	token_append(t, ch);
+	token_eos(t);
 	return PARSER_OK;
 }
 
 static inline int parse_simple(token_t *t, int ch, token_type_t type)
 {
 	token_append(t, ch);
+	token_eos(t);
 	t->type = type;
 	return PARSER_OK;
 }
@@ -1892,6 +1915,7 @@ static inline int parse_misc_char(parser_t *p, token_t *t, int ch)
 	(void)p;
 
 	token_append(t, ch);
+	token_eos(t);
 	return PARSER_OK;
 }
 
@@ -1912,6 +1936,7 @@ static inline int parse_backslash(parser_t *p, token_t *t, int ch)
 
 	if (opt_flags & OPT_ESCAPE_STRIP) {
 		token_append(t, ch);
+		token_eos(t);
 		t->type = TOKEN_WHITE_SPACE;
 	} else {
 		token_append(t, ch);
@@ -1919,6 +1944,7 @@ static inline int parse_backslash(parser_t *p, token_t *t, int ch)
 		if (UNLIKELY(ch == PARSER_EOF))
 			return ch;
 		token_append(t, ch);
+		token_eos(t);
 	}
 	return PARSER_OK;
 }
@@ -1954,6 +1980,7 @@ static inline int parse_whitespace(parser_t *p, token_t *t, int ch)
 		}
 	}
 	unget_char(p);
+	token_eos(t);
 
 	return parse_simple(t, ' ', TOKEN_WHITE_SPACE);
 }
@@ -2549,11 +2576,11 @@ int main(int argc, char **argv)
 	dump_bad_spellings();
 	free_words();
 
-	printf("\n%" PRIu64 " files scanned\n", files);
-	printf("%" PRIu64 " lines scanned\n", lines);
-	printf("%" PRIu64 " print statements found\n", finds);
+	printf("\n%" PRIu32 " files scanned\n", files);
+	printf("%" PRIu32 " lines scanned\n", lines);
+	printf("%" PRIu32 " print statements found\n", finds);
 	if (bad_spellings)
-		printf("%" PRIu64 " bad spellings found\n", bad_spellings);
+		printf("%" PRIu32 " bad spellings found\n", bad_spellings);
 	printf("scanned %.2f lines per second\n", 
 		FLOAT_CMP(t1, t2) ? 0.0 : (double)lines / (t2 - t1));
 	printf("(kernelscan " VERSION ")\n");
