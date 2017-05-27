@@ -154,7 +154,6 @@ static uint64_t lineno;
 static uint64_t bad_spellings;
 
 static uint8_t opt_flags = OPT_SOURCE_NAME;
-static bool whitespace_after_newline = true;
 static char *(*strdupcat)(char *restrict old, token_t *restrict new, size_t *oldlen);
 static char quotes[] = "\"";
 static char space[] = " ";
@@ -1492,9 +1491,6 @@ static inline void HOT token_append(token_t *t, const int ch)
 	*(ptr) = ch;
 	*(++ptr) = '\0';
 	t->ptr = ptr;
-
-	if (ch != ' ' && ch != '\n' && ch != '\t')
-		whitespace_after_newline = false;
 }
 
 static int skip_macros(parser_t *p)
@@ -1669,7 +1665,7 @@ static int HOT parse_identifier(parser_t *p, token_t *t, int ch)
 
 	for (;;) {
 		ch = get_char(p);
-		if (LIKELY(isalnum(ch) || ch == '_')) {
+		if (LIKELY(isalnum(ch) || UNLIKELY(ch == '_'))) {
 			token_append(t, ch);
 			continue;
 		}
@@ -1931,7 +1927,6 @@ static inline int parse_newline(parser_t *p, token_t *t, int ch)
 {
 	lines++;
 	lineno++;
-	whitespace_after_newline = true;
 	return parse_backslash(p, t, ch);
 }
 
