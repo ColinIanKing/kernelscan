@@ -1455,7 +1455,10 @@ static void token_new(token_t *t)
 static void token_free(token_t *t)
 {
 	free(t->token);
-	__builtin_memset(t, 0, sizeof(*t));
+	t->ptr = NULL;
+	t->token = NULL;
+	t->token_end = NULL;
+	t->len = 0;
 }
 
 static inline void token_expand(token_t *t)
