@@ -81,6 +81,12 @@
 #define HOT
 #endif
 
+#if defined(__GNUC__) && NEED_GNUC(4,6,0)
+#define NORETURN __attribute__ ((noreturn))
+#else
+#define NORETURN
+#endif
+
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
  */
@@ -1220,6 +1226,13 @@ static inline uint32_t HOT djb2a(const char *str)
 
 static int parse_file(char *path, token_t *t);
 
+static void NORETURN out_of_memory(void)
+{
+	asm ("");	/* Stops inlining */
+	fprintf(stderr, "Out of memory performing an allocation\n");
+	exit(EXIT_FAILURE);
+}
+
 static void free_word_node(word_node_t *node, const bool do_free)
 {
 	size_t i;
@@ -1253,10 +1266,8 @@ static inline void HOT add_word(char *str, word_node_t *node)
 	new_node = &node->nodes[ch];
 	if (*new_node == NULL) {
 		*new_node = calloc(1, sizeof(word_node_t));
-		if (UNLIKELY(!*new_node)) {
-			fprintf(stderr, "Out of memory\n");
-			exit(EXIT_FAILURE);
-		}
+		if (UNLIKELY(!*new_node))
+			out_of_memory();
 	}
 	add_word(++str, *new_node);
 }
@@ -1305,20 +1316,14 @@ static inline void HOT add_bad_spelling(const char *word)
 	}
 	he = malloc(sizeof(*he));
 	if (UNLIKELY(he == NULL))
-		goto err;
+		out_of_memory();
 
 	he->token = strdup(word);
 	if (UNLIKELY(he->token == NULL))
-		goto err;
+		out_of_memory();
 	he->next = hash_bad_spellings[h];
 	hash_bad_spellings[h] = he;
 	bad_spellings++;
-	return;
-
-err:
-	fprintf(stderr, "malloc(): Out of memory.\n");
-	exit(EXIT_FAILURE);
-				
 }
 
 static void HOT check_words(char *line)
@@ -1365,7 +1370,7 @@ static double gettime_to_double(void)
 /*
  *  Initialise the parser
  */
-static inline void parser_new(
+static inline HOT void parser_new(
 	parser_t *p,
 	unsigned char *data,
 	unsigned char *data_end,
@@ -1424,7 +1429,7 @@ static inline size_t HOT token_len(token_t *t)
 /*
  *  Clear the token ready for re-use
  */
-static inline void token_clear(token_t *t)
+static inline void HOT token_clear(token_t *t)
 {
 	t->ptr = t->token;
 	t->token_end = t->token + t->len;
@@ -1441,10 +1446,8 @@ static inline void token_clear(token_t *t)
 static void token_new(token_t *t)
 {
 	t->token = calloc(TOKEN_CHUNK_SIZE, 1);
-	if (UNLIKELY(t->token == NULL)) {
-		fprintf(stderr, "token_new: Out of memory!\n");
-		exit(EXIT_FAILURE);
-	}
+	if (UNLIKELY(t->token == NULL))
+		out_of_memory();
 	t->len = TOKEN_CHUNK_SIZE;
 	token_clear(t);
 }
@@ -1461,7 +1464,7 @@ static void token_free(token_t *t)
 	t->len = 0;
 }
 
-static inline void token_expand(token_t *t)
+static void HOT token_expand(token_t *t)
 {
 	/* No more space, add 1K more space */
 	ptrdiff_t diff = t->ptr - t->token;
@@ -1469,10 +1472,8 @@ static inline void token_expand(token_t *t)
 	t->len += TOKEN_CHUNK_SIZE;
 	t->token_end += TOKEN_CHUNK_SIZE;
 	t->token = realloc(t->token, t->len);
-	if (UNLIKELY(t->token == NULL)) {
-		fprintf(stderr, "token_expand: Out of memory!\n");
-		exit(EXIT_FAILURE);
-	}
+	if (UNLIKELY(t->token == NULL))
+		out_of_memory();
 	t->ptr = t->token + diff;
 }
 
@@ -2139,20 +2140,14 @@ static char *strdupcat_normal(
 	if (UNLIKELY(old == NULL)) {
 		*oldlen = newlen + 1;
 		tmp = malloc(*oldlen);
-//printf("NEW: <null> <%s> 0 %d, %d %d\n", new->token, strlen(new->token), *oldlen, newlen);
-		if (UNLIKELY(tmp == NULL)) {
-			fprintf(stderr, "strdupcat(): Out of memory.\n");
-			exit(EXIT_FAILURE);
-		}
+		if (UNLIKELY(tmp == NULL))
+			out_of_memory();
 		__builtin_strcpy(tmp, new->token);
 	} else {
 		*oldlen += newlen;
-//printf("REA: <%s> <%s> %d %d, %d %d (%d)\n", old, new->token, strlen(old), strlen(new->token), *oldlen, newlen, strlen(new->token) == newlen);
 		tmp = realloc(old, *oldlen);
-		if (UNLIKELY(tmp == NULL)) {
-			fprintf(stderr, "strdupcat(): Out of memory.\n");
-			exit(EXIT_FAILURE);
-		}
+		if (UNLIKELY(tmp == NULL))
+			out_of_memory();
 		__builtin_strcat(tmp, new->token);
 	}
 
@@ -2478,10 +2473,8 @@ static void dump_bad_spellings(void)
 	char **bad_spellings_sorted;
 
 	bad_spellings_sorted = calloc(bad_spellings, sizeof(char *));
-	if (!bad_spellings_sorted) {
-		fprintf(stderr, "Out of memory\n");
-		exit(EXIT_FAILURE);
-	}
+	if (!bad_spellings_sorted)
+		out_of_memory();
 
 	for (i = 0, j = 0; i < SIZEOF_ARRAY(hash_bad_spellings); i++) {
 		hash_entry_t *he = hash_bad_spellings[i];
