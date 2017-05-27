@@ -39,6 +39,7 @@
 #define OPT_LITERAL_STRINGS	0x00000004
 #define OPT_SOURCE_NAME		0x00000008
 #define OPT_FORMAT_STRIP	0x00000010
+#define OPT_CHECK_WORDS		0x00000020
 
 #define UNLIKELY(c)		__builtin_expect((c), 0)
 #define LIKELY(c)		__builtin_expect((c), 1)
@@ -54,6 +55,9 @@
 #define TOKEN_CHUNK_SIZE	(32768)
 #define TABLE_SIZE		(16384)
 #define HASH_MASK		(TABLE_SIZE - 1)
+
+#define MAX_WORD_NODES		(26)
+
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
 
 #define _VER_(major, minor, patchlevel)			\
@@ -120,13 +124,12 @@ typedef struct {
 	bool skip_white_space;		/* Magic skip white space flag */
 } parser_t;
 
-
 /*
  *  Hash table entry (linked list of tokens)
  */
 typedef struct hash_entry {
 	struct hash_entry *next;
-	const char *token;
+	char *token;
 } hash_entry_t;
 
 typedef int (*get_token_action_t)(parser_t *p, token_t *t, int ch);
@@ -139,16 +142,23 @@ typedef struct {
 	size_t len;	/* length of format string */
 } format_t;
 
+typedef struct word_node {
+	struct word_node *nodes[MAX_WORD_NODES];
+	bool eow;	/* end of word? true = yes */
+} word_node_t;
+
 static uint64_t finds;
 static uint64_t files;
 static uint64_t lines;
 static uint64_t lineno;
+static uint64_t bad_spellings;
+
 static uint8_t opt_flags = OPT_SOURCE_NAME;
 static bool whitespace_after_newline = true;
 static char *(*strdupcat)(char *restrict old, token_t *restrict new, size_t *oldlen);
 static char quotes[] = "\"";
 static char space[] = " ";
-
+static word_node_t word_nodes;
 
 /*
  *  Kernel printk format specifiers
@@ -159,12 +169,15 @@ static format_t formats[] = {
 	{ "llu", 3 },
 	{ "lld", 3 },
 	{ "llx", 3 },
+	{ "llX", 3 },
 	{ "lu", 2 },
 	{ "ld", 2 },
 	{ "lx", 2 },
+	{ "lX", 2 },
 	{ "u", 1 },
 	{ "d", 1 },
 	{ "x", 1 },
+	{ "X", 1 },
 	{ "pF", 2 },
 	{ "pf", 2 },
 	{ "ps", 2 },
@@ -277,10 +290,15 @@ static token_t token_space = {
 static hash_entry_t *hash_printks[TABLE_SIZE];
 
 /*
+ *  hash table of bad spellings
+ */
+static hash_entry_t *hash_bad_spellings[TABLE_SIZE];
+
+/*
  *  various printk like functions to populate the
  *  hash_printks hash table
  */
-static const char *printks[] = {
+static char *printks[] = {
 	"ACPI_BIOS_ERROR",
 	"ACPI_BIOS_WARNING",
 	"ACPI_DEBUG_PRINT",
@@ -1186,23 +1204,6 @@ static const char *printks[] = {
 	"zconf_error"
 };
 
-
-static int parse_file(char *path, token_t *t);
-
-/*
- *  gettime_to_double()
- *      get time as a double
- */
-static double gettime_to_double(void)
-{
-	struct timeval tv;
-
-	if (UNLIKELY(gettimeofday(&tv, NULL) < 0))
-		return 0.0;
-
-	return (double)tv.tv_sec + ((double)tv.tv_usec / 1000000);
-}
-
 /*
  *  djb2a()
  *	relatively fast string hash
@@ -1216,6 +1217,150 @@ static inline uint32_t HOT djb2a(const char *str)
                 hash = (hash * 33) ^ c;
 
         return hash & HASH_MASK;
+}
+
+static int parse_file(char *path, token_t *t);
+
+static void free_word_node(word_node_t *node, const bool do_free)
+{
+	size_t i;
+
+	if (UNLIKELY(!node))
+		return;
+
+	for (i = 0; i < MAX_WORD_NODES; i++)
+		free_word_node(node->nodes[i], true);
+
+	if (LIKELY(do_free))
+		free(node);
+}
+
+static void free_words(void)
+{
+	free_word_node(&word_nodes, false);
+}
+
+static inline void HOT add_word(char *str, word_node_t *node)
+{
+	register int ch = *str;
+	word_node_t **new_node;
+
+	if (UNLIKELY(!isalpha(ch))) {
+		node->eow = true;
+		return;
+	}
+
+	ch = tolower(ch) - 'a';
+	new_node = &node->nodes[ch];
+	if (*new_node == NULL) {
+		*new_node = calloc(1, sizeof(word_node_t));
+		if (UNLIKELY(!*new_node)) {
+			fprintf(stderr, "Out of memory\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+	add_word(++str, *new_node);
+}
+
+static int read_dictionary(const char *dict)
+{
+	char buffer[1024];
+	FILE *fp = fopen(dict, "r");
+	if (!fp)
+		return -1;
+
+	while (fgets(buffer, sizeof(buffer), fp))
+		add_word(buffer, &word_nodes);
+	(void)fclose(fp);
+
+	return 0;
+}
+
+static inline int HOT find_word(const char *word, const word_node_t *node)
+{
+	for (;;) {
+		register int ch;
+
+		if (UNLIKELY(!node))
+			return 0;
+		ch = *word;
+		if (!ch)
+			return node->eow;
+		if (UNLIKELY(!isalpha(ch)))
+			return 1;
+		ch = tolower(ch) - 'a';
+		node = node->nodes[ch];
+		word++;
+	}
+}
+
+static inline void HOT add_bad_spelling(const char *word)
+{
+	register const unsigned int h = djb2a(word);
+	hash_entry_t *he = hash_bad_spellings[h];
+
+	while (he) {
+		if (!strcmp(he->token, word))
+			return;
+		he = he->next;
+	}
+	he = malloc(sizeof(*he));
+	if (UNLIKELY(he == NULL))
+		goto err;
+
+	he->token = strdup(word);
+	if (UNLIKELY(he->token == NULL))
+		goto err;
+	he->next = hash_bad_spellings[h];
+	hash_bad_spellings[h] = he;
+	bad_spellings++;
+	return;
+
+err:
+	fprintf(stderr, "malloc(): Out of memory.\n");
+	exit(EXIT_FAILURE);
+				
+}
+
+static void HOT check_words(char *line)
+{
+	register char *p1 = line, *p2, *p3;
+
+	p3 = line + strlen(line);
+
+	while (p1 < p3) {
+		/* skip non-alhabetics */
+		while (*p1 && !isalpha(*p1))
+			p1++;
+		if (!*p1)
+			return;
+		p2 = p1;
+		//while (LIKELY((*p2 && (isalnum(*p2) || *p2 == '_'))))
+		while (LIKELY((*p2 && (isalpha(*p2)))))
+			p2++;
+		*p2 = '\0';
+
+		if (LIKELY(p2 - p1 > 1)) {
+			if (!find_word(p1, &word_nodes))
+				add_bad_spelling(p1);
+		}
+		p1 = p2 + 1;
+	}
+	return;
+}
+
+/*
+ *  gettime_to_double()
+ *      get time as a double
+ */
+static double gettime_to_double(void)
+{
+	struct timeval tv;
+
+	if (UNLIKELY(gettimeofday(&tv, NULL) < 0))
+		return 0.0;
+
+	return (double)tv.tv_sec + ((double)tv.tv_usec / 1000000);
 }
 
 /*
@@ -1310,8 +1455,8 @@ static void token_new(token_t *t)
  */
 static void token_free(token_t *t)
 {
-	__builtin_memset(t, 0, sizeof(*t));
 	free(t->token);
+	__builtin_memset(t, 0, sizeof(*t));
 }
 
 static inline void token_expand(token_t *t)
@@ -1338,7 +1483,7 @@ static inline void HOT token_append(token_t *t, const int ch)
 {
 	register char *ptr;
 
-	if (UNLIKELY(t->ptr > t->token_end))
+	if (UNLIKELY(t->ptr + 1 >= t->token_end))
 		token_expand(t);
 
 	ptr = t->ptr;
@@ -1799,6 +1944,25 @@ static inline int parse_eof(parser_t *p, token_t *t, int ch)
 	return PARSER_EOF;
 }
 
+static inline int parse_whitespace(parser_t *p, token_t *t, int ch)
+{
+	(void)p;
+	(void)ch;
+
+	t->type = TOKEN_IDENTIFIER;
+	token_append(t, ch);
+
+	for (;;) {
+		ch = get_char(p);
+		if (ch != ' ' && ch != '\t') {
+			break;
+		}
+	}
+	unget_char(p);
+
+	return parse_simple(t, ' ', TOKEN_WHITE_SPACE);
+}
+
 static get_token_action_t get_token_actions[] = {
 	['/'] = parse_skip_comments,
 	['#'] = parse_hash,
@@ -1890,6 +2054,8 @@ static get_token_action_t get_token_actions[] = {
 	['\''] = parse_literal_char,
 	['\\'] = parse_backslash,
 	['\n'] = parse_newline,
+	[' '] = parse_whitespace,
+	['\t'] = parse_whitespace,
 	[PARSER_EOF] = parse_eof,
 };
 
@@ -1924,7 +2090,7 @@ static inline void literal_strip_quotes(token_t *t)
 {
 	size_t len = token_len(t);
 
-	t->token[len - 1] = 0;
+	t->token[len - 1] = '\0';
 
 	__builtin_memmove(t->token, t->token + 1, len - 1);
 
@@ -1948,6 +2114,7 @@ static char *strdupcat_normal(
 	if (UNLIKELY(old == NULL)) {
 		*oldlen = newlen + 1;
 		tmp = malloc(*oldlen);
+//printf("NEW: <null> <%s> 0 %d, %d %d\n", new->token, strlen(new->token), *oldlen, newlen);
 		if (UNLIKELY(tmp == NULL)) {
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
 			exit(EXIT_FAILURE);
@@ -1955,6 +2122,7 @@ static char *strdupcat_normal(
 		__builtin_strcpy(tmp, new->token);
 	} else {
 		*oldlen += newlen;
+//printf("REA: <%s> <%s> %d %d, %d %d (%d)\n", old, new->token, strlen(old), strlen(new->token), *oldlen, newlen, strlen(new->token) == newlen);
 		tmp = realloc(old, *oldlen);
 		if (UNLIKELY(tmp == NULL)) {
 			fprintf(stderr, "strdupcat(): Out of memory.\n");
@@ -1993,6 +2161,10 @@ static void strip_format(char *line)
 
 			*ptr2++ = ' ';
 			ptr1++;
+			if (*ptr1 == '-')
+				ptr1++;
+			while (isdigit(*ptr1) || *ptr1 == '.')
+				ptr1++;
 
 			for (i = 0; i < SIZEOF_ARRAY(formats); i++) {
 				register const size_t len = formats[i].len;
@@ -2052,6 +2224,7 @@ static int parse_kernel_message(
 
 	for (;;) {
 		int ret = get_token(p, t);
+
 		if (UNLIKELY(ret == PARSER_EOF)) {
 			free(line);
 			free(str);
@@ -2066,6 +2239,9 @@ static int parse_kernel_message(
 				emit = false;
 			}
 			if (emit) {
+				if (opt_flags & OPT_CHECK_WORDS)
+					check_words(line);
+				else {
 				if (! *source_emit) {
 					if (opt_flags & OPT_SOURCE_NAME)
 						printf("Source: %s\n", path);
@@ -2073,8 +2249,10 @@ static int parse_kernel_message(
 				}
 				if (opt_flags & OPT_FORMAT_STRIP)
 					strip_format(line);
-				printf("%s%s\n", line,
+				printf("%s%s", line,
 					(opt_flags & OPT_LITERAL_STRINGS) ? "" : ";");
+				printf("\n");
+				}
 				finds++;
 			}
 			free(line);
@@ -2159,6 +2337,7 @@ static void show_usage(void)
 {
 	fprintf(stderr, "kernelscan: the fast kernel source message scanner\n\n");
 	fprintf(stderr, "kernelscan [options] path\n");
+	fprintf(stderr, "  -c     check words in dictionary\n");
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
 	fprintf(stderr, "  -f     replace kernel %% format specifiers with a space\n");
 	fprintf(stderr, "  -h     show this help\n");
@@ -2263,6 +2442,44 @@ static int HOT parse_file(char *path, token_t *t)
 	return rc;
 }
 
+static int cmpstr(const void *p1, const void *p2)
+{
+	return strcmp(* (char * const *) p1, * (char * const *) p2);
+}
+
+static void dump_bad_spellings(void)
+{
+	size_t i, j;
+	char **bad_spellings_sorted;
+
+	bad_spellings_sorted = calloc(bad_spellings, sizeof(char *));
+	if (!bad_spellings_sorted) {
+		fprintf(stderr, "Out of memory\n");
+		exit(EXIT_FAILURE);
+	}
+
+	for (i = 0, j = 0; i < SIZEOF_ARRAY(hash_bad_spellings); i++) {
+		hash_entry_t *he = hash_bad_spellings[i];
+
+		while (he) {
+			hash_entry_t *next = he->next;
+			bad_spellings_sorted[j++] = he->token;
+
+			free(he);
+			he = next;
+		}
+	}
+
+	qsort(bad_spellings_sorted, j, sizeof(char *), cmpstr);
+
+	for (i = 0; i < bad_spellings; i++) {
+		printf("%s\n", bad_spellings_sorted[i]);
+		free(bad_spellings_sorted[i]);
+	}
+
+	free(bad_spellings_sorted);
+}
+
 /*
  *  Scan kernel source for printk like statements
  */
@@ -2277,10 +2494,13 @@ int main(int argc, char **argv)
 	strdupcat = strdupcat_normal;
 
 	for (;;) {
-		int c = getopt(argc, argv, "efhnsx");
+		int c = getopt(argc, argv, "cefhnsx");
 		if (c == -1)
  			break;
 		switch (c) {
+		case 'c':
+			opt_flags |= OPT_CHECK_WORDS;
+			break;
 		case 'e':
 			opt_flags |= OPT_ESCAPE_STRIP;
 			break;
@@ -2307,6 +2527,8 @@ int main(int argc, char **argv)
 	}
 
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
+	if (opt_flags & OPT_CHECK_WORDS)
+		(void)read_dictionary("/usr/share/dict/words");
 
 	__builtin_memset(hash_printks, 0, sizeof(hash_printks));
 	for (i = 0; i < SIZEOF_ARRAY(printks); i++) {
@@ -2318,6 +2540,8 @@ int main(int argc, char **argv)
 		he++;
 	}
 
+	__builtin_memset(hash_bad_spellings, 0, sizeof(hash_bad_spellings));
+
 	token_new(&t);
 	t1 = gettime_to_double();
 	while (argc > optind) {
@@ -2327,9 +2551,14 @@ int main(int argc, char **argv)
 	t2 = gettime_to_double();
 	token_free(&t);
 
+	dump_bad_spellings();
+	free_words();
+
 	printf("\n%" PRIu64 " files scanned\n", files);
 	printf("%" PRIu64 " lines scanned\n", lines);
 	printf("%" PRIu64 " statements found\n", finds);
+	if (bad_spellings)
+		printf("%" PRIu64 " bad spellings found\n", bad_spellings);
 	printf("scanned %.2f lines per second\n", 
 		FLOAT_CMP(t1, t2) ? 0.0 : (double)lines / (t2 - t1));
 	printf("(kernelscan " VERSION ")\n");
