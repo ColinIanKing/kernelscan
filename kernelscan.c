@@ -1423,7 +1423,7 @@ static inline HOT void parser_new(
 /*
  *  Get next character from input stream
  */
-static inline get_char_t HOT get_char(parser_t *p)
+static inline get_char_t HOT get_char(register parser_t *p)
 {
 	if (LIKELY(p->ptr < p->data_end)) {
 		return *(p->ptr++);
@@ -1512,7 +1512,7 @@ static void HOT token_expand(token_t *t)
  *  we may run out of space, so this occasionally
  *  adds an extra 1K of token space for long tokens
  */
-static inline void HOT token_append(token_t *t, const get_char_t ch)
+static inline void HOT token_append(register token_t *t, register const get_char_t ch)
 {
 	if (UNLIKELY(t->ptr >= (t->token_end)))
 		token_expand(t);
@@ -1526,7 +1526,7 @@ static inline void HOT token_eos(token_t *t)
 	*(t->ptr) = '\0';
 }
 
-static inline void HOT token_cat_str(token_t *restrict t, const char *restrict str)
+static inline void HOT token_cat_str(register token_t *restrict t, register const char *restrict str)
 {
 	while (*str) {
 		token_append(t, *str);
@@ -1535,7 +1535,7 @@ static inline void HOT token_cat_str(token_t *restrict t, const char *restrict s
 	token_eos(t);
 }
 
-static get_char_t skip_macros(parser_t *p)
+static get_char_t skip_macros(register parser_t *p)
 {
 	bool continuation = false;
 
@@ -2123,7 +2123,7 @@ static get_token_action_t get_token_actions[] = {
 /*
  *  Gather a token from input stream
  */
-static get_char_t HOT get_token(parser_t *restrict p, token_t *restrict t)
+static get_char_t HOT get_token(register parser_t *restrict p, register token_t *restrict t)
 {
 	for (;;) {
 		register get_char_t ret, ch = get_char(p);
