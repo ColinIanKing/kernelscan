@@ -2570,7 +2570,10 @@ int main(int argc, char **argv)
 		if (!word_node_heap)
 			out_of_memory();
 
-		(void)read_dictionary("/usr/share/dict/words");
+		if (read_dictionary("/usr/share/dict/words") < 0) {
+			fprintf(stderr, "No dictionary found, expecting words in /usr/share/dict/words\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	for (i = 0; i < SIZEOF_ARRAY(printks); i++) {
