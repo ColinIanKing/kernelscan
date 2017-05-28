@@ -150,7 +150,7 @@ typedef struct {
 } format_t;
 
 typedef struct word_node {
-	struct word_node *nodes[MAX_WORD_NODES];
+	uint32_t	node_offset[MAX_WORD_NODES];
 	bool eow;	/* end of word? true = yes */
 } word_node_t;
 
@@ -1218,7 +1218,8 @@ static void NORETURN out_of_memory(void)
 static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 {
 	register int ch = *str;
-	word_node_t **new_node;
+	word_node_t *new_node;
+	uint32_t i;
 
 	if (word_node_heap_index >= WORD_NODES_HEAP_SIZE)
 		out_of_memory();
@@ -1229,12 +1230,15 @@ static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 	}
 
 	ch = tolower(ch) - 'a';
-	new_node = &node->nodes[ch];
-	if (*new_node == NULL) {
-		*new_node = word_node_heap_next;
+	i = node->node_offset[ch];
+	if (i) {
+		new_node = (word_node_t *)(((uintptr_t)word_node_heap) + i);
+	} else {
+		new_node = word_node_heap_next;
+		node->node_offset[ch] = (uintptr_t)new_node - (uintptr_t)word_node_heap;
 		word_node_heap_next++;
 	}
-	add_word(++str, *new_node);
+	add_word(++str, new_node);
 	word_node_heap_index++;
 }
 
@@ -1265,7 +1269,7 @@ static inline int HOT find_word(const char *restrict word, const word_node_t *re
 		if (UNLIKELY(!isalpha(ch)))
 			return 1;
 		ch = tolower(ch) - 'a';
-		node = node->nodes[ch];
+		node = (word_node_t *)(((uintptr_t)word_node_heap) + node->node_offset[ch]);
 		word++;
 	}
 }
