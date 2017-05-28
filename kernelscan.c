@@ -162,7 +162,7 @@ typedef struct {
 typedef struct word_node {
 	uint24_t	word_node_offset[MAX_WORD_NODES];
 	bool		eow;	/* End of Word flag */
-} PACKED word_node_t ;
+} word_node_t ;
 
 static uint32_t finds;
 static uint32_t files;
@@ -1225,36 +1225,47 @@ static void NORETURN out_of_memory(void)
 	exit(EXIT_FAILURE);
 }
 
-#if 0 && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-static inline void uint32to24(uint32_t from, uint24_t *to)
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+static inline void uint32to24(uint32_t *restrict from, uint24_t *restrict to)
 {
-	__builtin_memcpy(to, ((uint8_t *)&from) + 1, 3);
+	uint8_t *restrict p1 = (uint8_t *)from;
+	uint8_t *restrict p2 = (uint8_t *)to;
+
+	p2[0] = p1[0];
+	p2[1] = p1[1];
+	p2[2] = p1[2];
 }
 
-static inline void uint24to32(uint24_t from, uint32_t *to)
+static inline void uint24to32(uint24_t *restrict from, uint32_t *restrict to)
 {
-	uint8_t *ptr = (uint8_t *)to;
-	*ptr = 0;
-	__builtin_memcpy(ptr + 1, &from, 3);
-}
+	uint8_t *restrict p1 = (uint8_t *)from;
+	uint8_t *restrict p2 = (uint8_t *)to;
 
+	p2[0] = p1[0];
+	p2[1] = p1[1];
+	p2[2] = p1[2];
+	p2[3] = 0;
+}
 #else
-
-static inline void uint32to24(uint32_t from, uint24_t *to)
+static inline void uint32to24(uint32_t *restrict from, uint24_t *restrict to)
 {
-	to->uint24[0] = from & 0xff;
-	from >>= 8;
-	to->uint24[1] = from & 0xff;
-	from >>= 8;
-	to->uint24[2] = from & 0xff;
+	uint8_t *restrict p1 = (uint8_t *)from;
+	uint8_t *restrict p2 = (uint8_t *)to;
+
+	p2[2] = p1[3];
+	p2[1] = p1[2];
+	p2[0] = p1[1];
 }
 
-static inline void uint24to32(uint24_t from, uint32_t *to)
+static inline void uint24to32(uint24_t *restrict from, uint32_t *restrict to)
 {
-	*to =
-		(uint32_t)from.uint24[0] |
-		((uint32_t)from.uint24[1] << 8) |
-		((uint32_t)from.uint24[2] << 16);
+	uint8_t *restrict p1 = (uint8_t *)from;
+	uint8_t *restrict p2 = (uint8_t *)to;
+
+	p2[0] = 0;
+	p2[1] = p1[0];
+	p2[2] = p1[1];
+	p2[3] = p1[2];
 }
 #endif
 
@@ -1273,13 +1284,13 @@ static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 	}
 
 	ch = tolower(ch) - 'a';
-	uint24to32(node->word_node_offset[ch], &i);
+	uint24to32(&node->word_node_offset[ch], &i);
 	if (i) {
 		new_node = (word_node_t *)(((uintptr_t)word_node_heap) + i);
 	} else {
 		new_node = word_node_heap_next;
 		i = (uintptr_t)new_node - (uintptr_t)word_node_heap;
-		uint32to24(i, &node->word_node_offset[ch]);
+		uint32to24(&i, &node->word_node_offset[ch]);
 		word_node_heap_next++;
 	}
 	add_word(++str, new_node);
@@ -1300,7 +1311,7 @@ static int read_dictionary(const char *dict)
 	return 0;
 }
 
-static inline int HOT find_word(const char *restrict word, const word_node_t *restrict node)
+static inline int HOT find_word(char *restrict word, word_node_t *restrict node)
 {
 	for (;;) {
 		register int ch;
@@ -1314,7 +1325,7 @@ static inline int HOT find_word(const char *restrict word, const word_node_t *re
 		if (UNLIKELY(!isalpha(ch)))
 			return 1;
 		ch = tolower(ch) - 'a';
-		uint24to32(node->word_node_offset[ch], &i);
+		uint24to32(&node->word_node_offset[ch], &i);
 		node = i ? (word_node_t *)(((uintptr_t)word_node_heap) + i) : NULL;
 		word++;
 	}
@@ -2444,7 +2455,10 @@ static int HOT parse_file(
 		    ((len >= 2) && !__builtin_strcmp(path + len - 2, ".h")) ||
 		    ((len >= 4) && !__builtin_strcmp(path + len - 4, ".cpp")))) {
 			if (LIKELY(buf.st_size > 0)) {
-				unsigned char *data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
+				unsigned char *data;
+
+				//(void)posix_fadvise(fd, 0, buf.st_size, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
+				data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
 					MAP_PRIVATE | MAP_POPULATE, fd, 0);
 				if (UNLIKELY(data == MAP_FAILED)) {
 					(void)close(fd);
