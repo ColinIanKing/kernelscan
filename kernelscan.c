@@ -127,6 +127,8 @@ typedef struct {
 	token_type_t type;	/* The type of token we think it is */
 } token_t;
 
+typedef uint16_t get_char_t;
+
 /*
  *  Parser context
  */
@@ -145,7 +147,7 @@ typedef struct hash_entry {
 	char *token;
 } hash_entry_t;
 
-typedef int (*get_token_action_t)(parser_t *restrict p, token_t *restrict t, int ch);
+typedef get_char_t (*get_token_action_t)(parser_t *restrict p, token_t *restrict t, get_char_t ch);
 
 /*
  *  printk format string table items
@@ -1237,8 +1239,8 @@ static void NORETURN out_of_memory(void)
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 static inline void uint32to24(uint32_t *restrict from, uint24_t *restrict to)
 {
-	uint8_t *restrict p1 = (uint8_t *)from;
-	uint8_t *restrict p2 = (uint8_t *)to;
+	register uint8_t *restrict p1 = (uint8_t *)from;
+	register uint8_t *restrict p2 = (uint8_t *)to;
 
 	p2[0] = p1[0];
 	p2[1] = p1[1];
@@ -1247,8 +1249,8 @@ static inline void uint32to24(uint32_t *restrict from, uint24_t *restrict to)
 
 static inline void uint24to32(uint24_t *restrict from, uint32_t *restrict to)
 {
-	uint8_t *restrict p1 = (uint8_t *)from;
-	uint8_t *restrict p2 = (uint8_t *)to;
+	register uint8_t *restrict p1 = (uint8_t *)from;
+	register uint8_t *restrict p2 = (uint8_t *)to;
 
 	p2[0] = p1[0];
 	p2[1] = p1[1];
@@ -1280,7 +1282,7 @@ static inline void uint24to32(uint24_t *restrict from, uint32_t *restrict to)
 
 static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 {
-	register int ch = *str;
+	register get_char_t ch = *str;
 	word_node_t *new_node;
 	uint32_t i;
 
@@ -1320,19 +1322,19 @@ static int read_dictionary(const char *dict)
 	return 0;
 }
 
-static inline int HOT find_word(char *restrict word, word_node_t *restrict node)
+static inline bool HOT find_word(char *restrict word, word_node_t *restrict node)
 {
 	for (;;) {
-		register int ch;
+		register get_char_t ch;
 		uint32_t i;
 
 		if (UNLIKELY(!node))
-			return 0;
+			return false;
 		ch = *word;
 		if (!ch)
 			return node->eow;
 		if (UNLIKELY(!isalpha(ch)))
-			return 1;
+			return true;
 		ch = tolower(ch) - 'a';
 		uint24to32(&node->word_node_offset[ch], &i);
 		node = i ? (word_node_t *)(((uintptr_t)word_node_heap) + i) : NULL;
@@ -1342,7 +1344,7 @@ static inline int HOT find_word(char *restrict word, word_node_t *restrict node)
 
 static inline void HOT add_bad_spelling(const char *word)
 {
-	register const unsigned int h = djb2a(word);
+	register const uint32_t h = djb2a(word);
 	register hash_entry_t *he = hash_bad_spellings[h];
 
 	while (he) {
@@ -1421,7 +1423,7 @@ static inline HOT void parser_new(
 /*
  *  Get next character from input stream
  */
-static inline int HOT get_char(parser_t *p)
+static inline get_char_t HOT get_char(parser_t *p)
 {
 	if (LIKELY(p->ptr < p->data_end)) {
 		return *(p->ptr++);
@@ -1439,10 +1441,10 @@ static inline void HOT unget_char(parser_t *p)
 		p->ptr--;
 }
 
-static int cmp_format(const void *p1, const void *p2)
+static int cmp_format(const void *restrict p1, const void *restrict p2)
 {
-	format_t *f1 = (format_t *)p1;
-	format_t *f2 = (format_t *)p2;
+	format_t *restrict f1 = (format_t *restrict )p1;
+	format_t *restrict f2 = (format_t *restrict )p2;
 
 	register const size_t l1 = f1->len;
 	register const size_t l2 = f2->len;
@@ -1510,7 +1512,7 @@ static void HOT token_expand(token_t *t)
  *  we may run out of space, so this occasionally
  *  adds an extra 1K of token space for long tokens
  */
-static inline void HOT token_append(token_t *t, const int ch)
+static inline void HOT token_append(token_t *t, const get_char_t ch)
 {
 	if (UNLIKELY(t->ptr >= (t->token_end)))
 		token_expand(t);
@@ -1533,12 +1535,12 @@ static inline void HOT token_cat_str(token_t *restrict t, const char *restrict s
 	token_eos(t);
 }
 
-static int skip_macros(parser_t *p)
+static get_char_t skip_macros(parser_t *p)
 {
 	bool continuation = false;
 
 	for (;;) {
-		register int ch;
+		register get_char_t ch;
 
 		ch = get_char(p);
 		if (UNLIKELY(ch == PARSER_EOF))
@@ -1559,10 +1561,9 @@ static int skip_macros(parser_t *p)
 /*
  *  Parse C comments and just throw them away
  */
-static int skip_comments(parser_t *p)
+static get_char_t skip_comments(parser_t *p)
 {
-	register int ch;
-	int nextch;
+	register get_char_t ch, nextch;
 
 	nextch = get_char(p);
 	if (UNLIKELY(nextch == PARSER_EOF))
@@ -1608,7 +1609,7 @@ static int skip_comments(parser_t *p)
  *  kernel doesn't have floats or doubles, so we
  *  can just parse decimal, octal or hex values.
  */
-static int parse_number(parser_t *restrict p, token_t *restrict t, int ch)
+static get_char_t parse_number(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	bool ishex = false;
 	bool isoct = false;
@@ -1616,8 +1617,8 @@ static int parse_number(parser_t *restrict p, token_t *restrict t, int ch)
 	/*
 	 *  Crude way to detect the kind of integer
 	 */
-	if (ch == '0') {
-		int nextch1, nextch2;
+	if (LIKELY(ch == '0')) {
+		register get_char_t nextch1, nextch2;
 
 		token_append(t, ch);
 
@@ -1706,7 +1707,7 @@ static int parse_number(parser_t *restrict p, token_t *restrict t, int ch)
 /*
  *  Parse identifiers
  */
-static int HOT parse_identifier(parser_t *restrict p, token_t *restrict t, int ch)
+static get_char_t HOT parse_identifier(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	t->type = TOKEN_IDENTIFIER;
 	token_append(t, ch);
@@ -1727,10 +1728,10 @@ static int HOT parse_identifier(parser_t *restrict p, token_t *restrict t, int c
 /*
  *  Parse literal strings
  */
-static int parse_literal(
+static get_char_t parse_literal(
 	parser_t *restrict p,
 	token_t *restrict t,
-	const int literal,
+	const get_char_t literal,
 	const token_type_t type)
 {
 	t->type = type;
@@ -1738,7 +1739,7 @@ static int parse_literal(
 	token_append(t, literal);
 
 	for (;;) {
-		int ch = get_char(p);
+		register get_char_t ch = get_char(p);
 		if (UNLIKELY(ch == PARSER_EOF)) {
 			token_eos(t);
 			return PARSER_OK;
@@ -1811,15 +1812,11 @@ static int parse_literal(
  *  Parse operators such as +, - which can
  *  be + or ++ forms.
  */
-static inline int parse_op(parser_t *restrict p, token_t *restrict t, int op)
+static inline get_char_t parse_op(parser_t *restrict p, token_t *restrict t, get_char_t op)
 {
-	int ch;
-
 	token_append(t, op);
 
-	ch = get_char(p);
-
-	if (ch == op) {
+	if (get_char(p) == op) {
 		token_append(t, op);
 		token_eos(t);
 		return PARSER_OK;
@@ -1833,9 +1830,9 @@ static inline int parse_op(parser_t *restrict p, token_t *restrict t, int op)
 /*
  *  Parse -, --, ->
  */
-static inline int parse_minus(parser_t *restrict p, token_t *restrict t, int op)
+static inline get_char_t parse_minus(parser_t *restrict p, token_t *restrict t, get_char_t op)
 {
-	int ch;
+	register get_char_t ch;
 
 	token_append(t, op);
 
@@ -1847,7 +1844,7 @@ static inline int parse_minus(parser_t *restrict p, token_t *restrict t, int op)
 		return PARSER_OK;
 	}
 
-	if (ch == '>') {
+	if (LIKELY(ch == '>')) {
 		token_append(t, ch);
 		token_eos(t);
 		t->type = TOKEN_ARROW;
@@ -1859,9 +1856,9 @@ static inline int parse_minus(parser_t *restrict p, token_t *restrict t, int op)
 	return PARSER_OK;
 }
 
-static inline int parse_skip_comments(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_skip_comments(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
-	int ret = skip_comments(p);
+	get_char_t ret = skip_comments(p);
 
 	if (UNLIKELY(ret == PARSER_EOF))
 		return ret;
@@ -1875,7 +1872,7 @@ static inline int parse_skip_comments(parser_t *restrict p, token_t *restrict t,
 	return PARSER_OK;
 }
 
-static inline int parse_simple(token_t *t, int ch, token_type_t type)
+static inline get_char_t parse_simple(token_t *t, get_char_t ch, token_type_t type)
 {
 	token_append(t, ch);
 	token_eos(t);
@@ -1883,7 +1880,7 @@ static inline int parse_simple(token_t *t, int ch, token_type_t type)
 	return PARSER_OK;
 }
 
-static inline int parse_hash(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_hash(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 	(void)ch;
@@ -1894,14 +1891,14 @@ static inline int parse_hash(parser_t *restrict p, token_t *restrict t, int ch)
 	return PARSER_OK;
 }
 
-static inline int parse_paren_opened(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_paren_opened(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_PAREN_OPENED);
 }
 
-static inline int parse_paren_closed(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_paren_closed(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 
@@ -1909,49 +1906,49 @@ static inline int parse_paren_closed(parser_t *restrict p, token_t *restrict t, 
 }
 
 
-static inline int parse_square_opened(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_square_opened(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_SQUARE_OPENED);
 }
 
-static inline int parse_square_closed(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_square_closed(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_SQUARE_CLOSED);
 }
 
-static inline int parse_less_than(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_less_than(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_LESS_THAN);
 }
 
-static inline int parse_greater_than(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_greater_than(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_GREATER_THAN);
 }
 
-static inline int parse_comma(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_comma(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_COMMA);
 }
 
-static inline int parse_terminal(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_terminal(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_TERMINAL);
 }
 
-static inline int parse_misc_char(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_misc_char(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 
@@ -1960,17 +1957,17 @@ static inline int parse_misc_char(parser_t *restrict p, token_t *restrict t, int
 	return PARSER_OK;
 }
 
-static inline int parse_literal_string(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_literal_string(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	return parse_literal(p, t, ch, TOKEN_LITERAL_STRING);
 }
 
-static inline int parse_literal_char(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_literal_char(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	return parse_literal(p, t, ch, TOKEN_LITERAL_CHAR);
 }
 
-static inline int parse_backslash(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_backslash(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	if (p->skip_white_space)
 		return PARSER_OK | PARSER_CONTINUE;
@@ -1990,14 +1987,14 @@ static inline int parse_backslash(parser_t *restrict p, token_t *restrict t, int
 	return PARSER_OK;
 }
 
-static inline int parse_newline(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_newline(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	lines++;
 	lineno++;
 	return parse_backslash(p, t, ch);
 }
 
-static inline int parse_eof(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_eof(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 	(void)t;
@@ -2006,7 +2003,7 @@ static inline int parse_eof(parser_t *restrict p, token_t *restrict t, int ch)
 	return PARSER_EOF;
 }
 
-static inline int parse_whitespace(parser_t *restrict p, token_t *restrict t, int ch)
+static inline get_char_t parse_whitespace(parser_t *restrict p, token_t *restrict t, get_char_t ch)
 {
 	(void)p;
 	(void)ch;
@@ -2126,12 +2123,11 @@ static get_token_action_t get_token_actions[] = {
 /*
  *  Gather a token from input stream
  */
-static int HOT get_token(parser_t *restrict p, token_t *restrict t)
+static get_char_t HOT get_token(parser_t *restrict p, token_t *restrict t)
 {
 	for (;;) {
-		register int ch = get_char(p);
+		register get_char_t ret, ch = get_char(p);
 		register get_token_action_t action = get_token_actions[ch];
-		register int ret;
 
 		if (UNLIKELY(!action))
 			continue;
@@ -2151,7 +2147,7 @@ static int HOT get_token(parser_t *restrict p, token_t *restrict t)
  */
 static inline void literal_strip_quotes(token_t *t)
 {
-	size_t len = token_len(t);
+	register size_t len = token_len(t);
 
 	t->token[len - 1] = '\0';
 
@@ -2189,11 +2185,11 @@ static void token_cat_just_literal_string(
 
 static void strip_format(char *line)
 {
-	char *ptr1 = line, *ptr2 = line;
+	register char *ptr1 = line, *ptr2 = line;
 
 	while (*ptr1) {
 		if (UNLIKELY((*ptr1 == '%') && *(ptr1 + 1))) {
-			size_t i;
+			register size_t i;
 
 			*ptr2++ = ' ';
 			ptr1++;
@@ -2220,7 +2216,7 @@ static void strip_format(char *line)
 /*
  *  Parse a kernel message, like printk() or dev_err()
  */
-static int parse_kernel_message(
+static get_char_t parse_kernel_message(
 	const char *restrict path,
 	bool *restrict source_emit,
 	parser_t *restrict p,
@@ -2256,7 +2252,7 @@ static int parse_kernel_message(
 
 	token_clear(str);
 	for (;;) {
-		int ret = get_token(p, t);
+		get_char_t ret = get_token(p, t);
 
 		if (UNLIKELY(ret == PARSER_EOF))
 			return PARSER_EOF;
@@ -2300,7 +2296,7 @@ static int parse_kernel_message(
 			emit = true;
 		} else {
 			if (got_string) {
-				size_t len = token_len(line);
+				register size_t len = token_len(line);
 
 				if ((check_nl) &&
 				    (len > 2) &&
@@ -2345,7 +2341,7 @@ static void parse_kernel_messages(
 	token_clear(t);
 
 	while ((get_token(&p, t)) != PARSER_EOF) {
-		register unsigned int h = djb2a(t->token);
+		register uint32_t h = djb2a(t->token);
 		hash_entry_t *hf = hash_printks[h];
 
 		while (hf) {
@@ -2450,7 +2446,7 @@ static int HOT parse_file(
 	lineno = 0;
 
 	if (LIKELY(S_ISREG(buf.st_mode))) {
-		size_t len = __builtin_strlen(path);
+		register size_t len = __builtin_strlen(path);
 
 		if (LIKELY(((len >= 2) && !__builtin_strcmp(path + len - 2, ".c")) ||
 		    ((len >= 2) && !__builtin_strcmp(path + len - 2, ".h")) ||
@@ -2489,7 +2485,7 @@ static int cmpstr(const void *p1, const void *p2)
 
 static void dump_bad_spellings(void)
 {
-	size_t i, j;
+	register size_t i, j;
 	char **bad_spellings_sorted;
 
 	bad_spellings_sorted = calloc(bad_spellings, sizeof(char *));
@@ -2497,7 +2493,7 @@ static void dump_bad_spellings(void)
 		out_of_memory();
 
 	for (i = 0, j = 0; i < SIZEOF_ARRAY(hash_bad_spellings); i++) {
-		hash_entry_t *he = hash_bad_spellings[i];
+		register hash_entry_t *he = hash_bad_spellings[i];
 
 		while (he) {
 			hash_entry_t *next = he->next;
