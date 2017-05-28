@@ -1423,7 +1423,7 @@ static inline void HOT token_clear(token_t *t)
  */
 static void token_new(token_t *t)
 {
-	t->token = calloc(TOKEN_CHUNK_SIZE, 1);
+	t->token = aligned_alloc(64, TOKEN_CHUNK_SIZE);
 	if (UNLIKELY(t->token == NULL))
 		out_of_memory();
 	t->len = TOKEN_CHUNK_SIZE;
