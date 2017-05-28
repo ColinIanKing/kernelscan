@@ -2605,7 +2605,7 @@ int main(int argc, char **argv)
 	printf("%" PRIu32 " print statements found\n", finds);
 	if (bad_spellings)
 		printf("%" PRIu32 " bad spellings found\n", bad_spellings);
-	printf("scanned %.2f lines per second\n", 
+	printf("scanned %.2f lines per second\n",
 		FLOAT_CMP(t1, t2) ? 0.0 : (double)lines / (t2 - t1));
 	printf("(kernelscan " VERSION ")\n");
 
