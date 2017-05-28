@@ -1202,6 +1202,15 @@ static char *printks[] = {
 };
 
 /*
+ *  Get length of token
+ */
+static inline size_t HOT token_len(token_t *t)
+{
+	return t->ptr - t->token;
+}
+
+
+/*
  *  djb2a()
  *	relatively fast string hash
  */
@@ -1353,11 +1362,11 @@ static inline void HOT add_bad_spelling(const char *word)
 	bad_spellings++;
 }
 
-static void HOT check_words(char *line)
+static void HOT check_words(token_t *token)
 {
-	register char *p1 = line, *p2, *p3;
+	register char *p1 = token->token, *p2, *p3;
 
-	p3 = line + strlen(line);
+	p3 = p1 + token_len(token);
 
 	while (p1 < p3) {
 		/* skip non-alhabetics */
@@ -1443,14 +1452,6 @@ static int cmp_format(const void *p1, const void *p2)
 	if (l1 > l2)
 		return -1;
 	return strcmp(f1->format, f2->format);
-}
-
-/*
- *  Get length of token
- */
-static inline size_t HOT token_len(token_t *t)
-{
-	return t->ptr - t->token;
 }
 
 /*
@@ -2269,7 +2270,7 @@ static int parse_kernel_message(
 			}
 			if (emit) {
 				if (opt_flags & OPT_CHECK_WORDS)
-					check_words(line->token);
+					check_words(line);
 				else {
 					if (! *source_emit) {
 						if (opt_flags & OPT_SOURCE_NAME)
