@@ -1225,6 +1225,20 @@ static void NORETURN out_of_memory(void)
 	exit(EXIT_FAILURE);
 }
 
+#if 0 && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+static inline void uint32to24(uint32_t from, uint24_t *to)
+{
+	__builtin_memcpy(to, ((uint8_t *)&from) + 1, 3);
+}
+
+static inline void uint24to32(uint24_t from, uint32_t *to)
+{
+	uint8_t *ptr = (uint8_t *)to;
+	*ptr = 0;
+	__builtin_memcpy(ptr + 1, &from, 3);
+}
+
+#else
 
 static inline void uint32to24(uint32_t from, uint24_t *to)
 {
@@ -1242,6 +1256,7 @@ static inline void uint24to32(uint24_t from, uint32_t *to)
 		((uint32_t)from.uint24[1] << 8) |
 		((uint32_t)from.uint24[2] << 16);
 }
+#endif
 
 static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 {
@@ -1300,7 +1315,7 @@ static inline int HOT find_word(const char *restrict word, const word_node_t *re
 			return 1;
 		ch = tolower(ch) - 'a';
 		uint24to32(node->word_node_offset[ch], &i);
-		node = (word_node_t *)(((uintptr_t)word_node_heap) + i);
+		node = i ? (word_node_t *)(((uintptr_t)word_node_heap) + i) : NULL;
 		word++;
 	}
 }
@@ -2579,8 +2594,6 @@ int main(int argc, char **argv)
 	printf("scanned %.2f lines per second\n", 
 		FLOAT_CMP(t1, t2) ? 0.0 : (double)lines / (t2 - t1));
 	printf("(kernelscan " VERSION ")\n");
-
-	printf("%zd\n", sizeof(word_node_t));
 
 	exit(EXIT_SUCCESS);
 }
