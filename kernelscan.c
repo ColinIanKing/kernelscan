@@ -57,6 +57,7 @@
 #define HASH_MASK		(TABLE_SIZE - 1)
 
 #define MAX_WORD_NODES		(26)
+#define WORD_NODES_HEAP_SIZE	(1000000)
 
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
 
@@ -158,12 +159,15 @@ static uint32_t files;
 static uint32_t lines;
 static uint32_t lineno;
 static uint32_t bad_spellings;
+static uint32_t word_node_heap_index;
 
 static uint8_t opt_flags = OPT_SOURCE_NAME;
 static void (*token_cat)(token_t *restrict token, token_t *restrict token_to_add);
 static char quotes[] = "\"";
 static char space[] = " ";
 static word_node_t word_nodes;
+static word_node_t *word_node_heap;
+static word_node_t *word_node_heap_next;
 
 /*
  *  Kernel printk format specifiers
@@ -1211,29 +1215,13 @@ static void NORETURN out_of_memory(void)
 	exit(EXIT_FAILURE);
 }
 
-static void free_word_node(word_node_t *node, const bool do_free)
-{
-	size_t i;
-
-	if (UNLIKELY(!node))
-		return;
-
-	for (i = 0; i < MAX_WORD_NODES; i++)
-		free_word_node(node->nodes[i], true);
-
-	if (LIKELY(do_free))
-		free(node);
-}
-
-static void free_words(void)
-{
-	free_word_node(&word_nodes, false);
-}
-
 static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 {
 	register int ch = *str;
 	word_node_t **new_node;
+
+	if (word_node_heap_index >= WORD_NODES_HEAP_SIZE)
+		out_of_memory();
 
 	if (UNLIKELY(!isalpha(ch))) {
 		node->eow = true;
@@ -1243,11 +1231,11 @@ static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 	ch = tolower(ch) - 'a';
 	new_node = &node->nodes[ch];
 	if (*new_node == NULL) {
-		*new_node = calloc(1, sizeof(word_node_t));
-		if (UNLIKELY(!*new_node))
-			out_of_memory();
+		*new_node = word_node_heap_next;
+		word_node_heap_next++;
 	}
 	add_word(++str, *new_node);
+	word_node_heap_index++;
 }
 
 static int read_dictionary(const char *dict)
@@ -2512,8 +2500,14 @@ int main(int argc, char **argv)
 	}
 
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
-	if (opt_flags & OPT_CHECK_WORDS)
+	if (opt_flags & OPT_CHECK_WORDS) {
+		word_node_heap_next = word_node_heap =
+			calloc(WORD_NODES_HEAP_SIZE, sizeof(word_node_t));
+		if (!word_node_heap)
+			out_of_memory();
+
 		(void)read_dictionary("/usr/share/dict/words");
+	}
 
 	for (i = 0; i < SIZEOF_ARRAY(printks); i++) {
 		register const unsigned int h = djb2a(printks[i]);
@@ -2540,7 +2534,7 @@ int main(int argc, char **argv)
 	token_free(&t);
 
 	dump_bad_spellings();
-	free_words();
+	free(word_node_heap);
 
 	printf("\n%" PRIu32 " files scanned\n", files);
 	printf("%" PRIu32 " lines scanned\n", lines);
