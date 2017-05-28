@@ -88,6 +88,12 @@
 #define NORETURN
 #endif
 
+#if defined(__GNUC__) && NEED_GNUC(4,6,0)
+#define PACKED	__attribute__((packed))
+#else
+#define PACKED
+#endif
+
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
  */
@@ -149,10 +155,14 @@ typedef struct {
 	size_t len;	/* length of format string */
 } format_t;
 
+typedef struct {
+	uint8_t		uint24[3];
+} PACKED uint24_t;
+
 typedef struct word_node {
-	uint32_t	node_offset[MAX_WORD_NODES];
-	bool eow;	/* end of word? true = yes */
-} word_node_t;
+	uint24_t	word_node_offset[MAX_WORD_NODES];
+	bool		eow;	/* End of Word flag */
+} PACKED word_node_t ;
 
 static uint32_t finds;
 static uint32_t files;
@@ -1215,6 +1225,24 @@ static void NORETURN out_of_memory(void)
 	exit(EXIT_FAILURE);
 }
 
+
+static inline void uint32to24(uint32_t from, uint24_t *to)
+{
+	to->uint24[0] = from & 0xff;
+	from >>= 8;
+	to->uint24[1] = from & 0xff;
+	from >>= 8;
+	to->uint24[2] = from & 0xff;
+}
+
+static inline void uint24to32(uint24_t from, uint32_t *to)
+{
+	*to =
+		(uint32_t)from.uint24[0] |
+		((uint32_t)from.uint24[1] << 8) |
+		((uint32_t)from.uint24[2] << 16);
+}
+
 static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 {
 	register int ch = *str;
@@ -1230,12 +1258,13 @@ static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 	}
 
 	ch = tolower(ch) - 'a';
-	i = node->node_offset[ch];
+	uint24to32(node->word_node_offset[ch], &i);
 	if (i) {
 		new_node = (word_node_t *)(((uintptr_t)word_node_heap) + i);
 	} else {
 		new_node = word_node_heap_next;
-		node->node_offset[ch] = (uintptr_t)new_node - (uintptr_t)word_node_heap;
+		i = (uintptr_t)new_node - (uintptr_t)word_node_heap;
+		uint32to24(i, &node->word_node_offset[ch]);
 		word_node_heap_next++;
 	}
 	add_word(++str, new_node);
@@ -1260,6 +1289,7 @@ static inline int HOT find_word(const char *restrict word, const word_node_t *re
 {
 	for (;;) {
 		register int ch;
+		uint32_t i;
 
 		if (UNLIKELY(!node))
 			return 0;
@@ -1269,7 +1299,8 @@ static inline int HOT find_word(const char *restrict word, const word_node_t *re
 		if (UNLIKELY(!isalpha(ch)))
 			return 1;
 		ch = tolower(ch) - 'a';
-		node = (word_node_t *)(((uintptr_t)word_node_heap) + node->node_offset[ch]);
+		uint24to32(node->word_node_offset[ch], &i);
+		node = (word_node_t *)(((uintptr_t)word_node_heap) + i);
 		word++;
 	}
 }
@@ -2548,6 +2579,8 @@ int main(int argc, char **argv)
 	printf("scanned %.2f lines per second\n", 
 		FLOAT_CMP(t1, t2) ? 0.0 : (double)lines / (t2 - t1));
 	printf("(kernelscan " VERSION ")\n");
+
+	printf("%zd\n", sizeof(word_node_t));
 
 	exit(EXIT_SUCCESS);
 }
