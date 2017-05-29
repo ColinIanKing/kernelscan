@@ -57,7 +57,7 @@
 #define HASH_MASK		(TABLE_SIZE - 1)
 
 #define MAX_WORD_NODES		(26)
-#define WORD_NODES_HEAP_SIZE	(1000000)
+#define WORD_NODES_HEAP_SIZE	(180000)
 
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
 
@@ -171,7 +171,7 @@ static uint32_t files;
 static uint32_t lines;
 static uint32_t lineno;
 static uint32_t bad_spellings;
-static uint32_t word_node_heap_index;
+static uint32_t words;
 
 static uint8_t opt_flags = OPT_SOURCE_NAME;
 static void (*token_cat)(token_t *restrict token, token_t *restrict token_to_add);
@@ -1286,7 +1286,7 @@ static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 	word_node_t *new_node;
 	uint32_t i;
 
-	if (word_node_heap_index >= WORD_NODES_HEAP_SIZE)
+	if (word_node_heap_next - word_node_heap >= WORD_NODES_HEAP_SIZE)
 		out_of_memory();
 
 	if (UNLIKELY(!isalpha(ch))) {
@@ -1305,7 +1305,6 @@ static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
 		word_node_heap_next++;
 	}
 	add_word(++str, new_node);
-	word_node_heap_index++;
 }
 
 static int read_dictionary(const char *dict)
@@ -1315,8 +1314,10 @@ static int read_dictionary(const char *dict)
 	if (!fp)
 		return -1;
 
-	while (fgets(buffer, sizeof(buffer), fp))
+	while (fgets(buffer, sizeof(buffer), fp)) {
+		words++;
 		add_word(buffer, &word_nodes);
+	}
 	(void)fclose(fp);
 
 	return 0;
@@ -2603,6 +2604,9 @@ int main(int argc, char **argv)
 	printf("\n%" PRIu32 " files scanned\n", files);
 	printf("%" PRIu32 " lines scanned\n", lines);
 	printf("%" PRIu32 " print statements found\n", finds);
+	if (word_node_heap_next - word_node_heap)
+		printf("%" PRIu32 " words and %ld nodes in dictionary heap\n",
+			words, word_node_heap_next - word_node_heap);
 	if (bad_spellings)
 		printf("%" PRIu32 " bad spellings found\n", bad_spellings);
 	printf("scanned %.2f lines per second\n",
