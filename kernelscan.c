@@ -2344,7 +2344,7 @@ static void parse_kernel_messages(
 
 	while ((get_token(&p, t)) != PARSER_EOF) {
 		register uint32_t h = djb2a(t->token);
-		hash_entry_t *hf = hash_printks[h];
+		register hash_entry_t *hf = hash_printks[h];
 
 		while (hf) {
 			if (!__builtin_strcmp(t->token, hf->token)) {
