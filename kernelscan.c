@@ -1280,31 +1280,32 @@ static inline void uint24to32(uint24_t *restrict from, uint32_t *restrict to)
 }
 #endif
 
-static inline void HOT add_word(char *restrict str, word_node_t *restrict node)
+static inline void HOT add_word(register char *restrict str, register word_node_t *restrict node)
 {
 	register get_char_t ch = *str;
-	word_node_t *new_node;
-	uint32_t i;
 
 	if (word_node_heap_next - word_node_heap >= WORD_NODES_HEAP_SIZE)
 		out_of_memory();
 
 	if (UNLIKELY(!isalpha(ch))) {
 		node->eow = true;
-		return;
-	}
-
-	ch = tolower(ch) - 'a';
-	uint24to32(&node->word_node_offset[ch], &i);
-	if (i) {
-		new_node = (word_node_t *)(((uintptr_t)word_node_heap) + i);
 	} else {
-		new_node = word_node_heap_next;
-		i = (uintptr_t)new_node - (uintptr_t)word_node_heap;
-		uint32to24(&i, &node->word_node_offset[ch]);
-		word_node_heap_next++;
+		register word_node_t *new_node;
+		uint32_t i;
+		register uint24_t *offset;
+
+		ch = tolower(ch) - 'a';
+		offset = &node->word_node_offset[ch];
+		uint24to32(offset, &i);
+		if (i) {
+			new_node = (word_node_t *)(((uintptr_t)word_node_heap) + i);
+		} else {
+			new_node = word_node_heap_next++;
+			i = (uintptr_t)new_node - (uintptr_t)word_node_heap;
+			uint32to24(&i, offset);
+		}
+		add_word(++str, new_node);
 	}
-	add_word(++str, new_node);
 }
 
 static int read_dictionary(const char *dict)
@@ -1323,7 +1324,7 @@ static int read_dictionary(const char *dict)
 	return 0;
 }
 
-static inline bool HOT find_word(char *restrict word, word_node_t *restrict node)
+static inline bool HOT find_word(register char *restrict word, register word_node_t *restrict node)
 {
 	for (;;) {
 		register get_char_t ch;
@@ -1354,11 +1355,11 @@ static inline void HOT add_bad_spelling(const char *word)
 		he = he->next;
 	}
 	he = malloc(sizeof(*he));
-	if (UNLIKELY(he == NULL))
+	if (UNLIKELY(!he))
 		out_of_memory();
 
 	he->token = strdup(word);
-	if (UNLIKELY(he->token == NULL))
+	if (UNLIKELY(!he->token))
 		out_of_memory();
 	he->next = hash_bad_spellings[h];
 	hash_bad_spellings[h] = he;
@@ -1477,7 +1478,7 @@ static inline void HOT token_clear(token_t *t)
 static void token_new(token_t *t)
 {
 	t->token = aligned_alloc(64, TOKEN_CHUNK_SIZE);
-	if (UNLIKELY(t->token == NULL))
+	if (UNLIKELY(!t->token))
 		out_of_memory();
 	t->len = TOKEN_CHUNK_SIZE;
 	token_clear(t);
@@ -1503,7 +1504,7 @@ static void HOT token_expand(token_t *t)
 	t->len += TOKEN_CHUNK_SIZE;
 	t->token_end += TOKEN_CHUNK_SIZE;
 	t->token = realloc(t->token, t->len);
-	if (UNLIKELY(t->token == NULL))
+	if (UNLIKELY(!t->token))
 		out_of_memory();
 	t->ptr = t->token + diff;
 }
