@@ -178,8 +178,8 @@ static void (*token_cat)(token_t *restrict token, token_t *restrict token_to_add
 static char quotes[] = "\"";
 static char space[] = " ";
 static word_node_t word_nodes;
-static word_node_t *word_node_heap;
-static word_node_t *word_node_heap_next;
+static word_node_t word_node_heap[WORD_NODES_HEAP_SIZE];
+static word_node_t *word_node_heap_next = word_node_heap;
 
 /*
  *  Kernel printk format specifiers
@@ -2563,10 +2563,7 @@ int main(int argc, char **argv)
 
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
 	if (opt_flags & OPT_CHECK_WORDS) {
-		word_node_heap_next = word_node_heap =
-			calloc(WORD_NODES_HEAP_SIZE, sizeof(word_node_t));
-		if (!word_node_heap)
-			out_of_memory();
+		word_node_heap_next = word_node_heap;
 
 		if (read_dictionary("/usr/share/dict/words") < 0) {
 			fprintf(stderr, "No dictionary found, expecting words in /usr/share/dict/words\n");
@@ -2599,7 +2596,6 @@ int main(int argc, char **argv)
 	token_free(&t);
 
 	dump_bad_spellings();
-	free(word_node_heap);
 
 	printf("\n%" PRIu32 " files scanned\n", files);
 	printf("%" PRIu32 " lines scanned\n", lines);
