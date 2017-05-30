@@ -17,7 +17,7 @@
 #
 BINDIR=/usr/bin
 
-VERSION=0.2.6
+VERSION=0.2.7
 
 CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program -fivopts
 CFLAGS += -DVERSION='"$(VERSION)"'
