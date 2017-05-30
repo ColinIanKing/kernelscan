@@ -2602,8 +2602,8 @@ int main(int argc, char **argv)
 	printf("%" PRIu32 " lines scanned\n", lines);
 	printf("%" PRIu32 " print statements found\n", finds);
 	if (word_node_heap_next - word_node_heap)
-		printf("%" PRIu32 " words and %ld nodes in dictionary heap\n",
-			words, word_node_heap_next - word_node_heap);
+		printf("%" PRIu32 " words and %td nodes in dictionary heap\n",
+			words, (ptrdiff_t)(word_node_heap_next - word_node_heap));
 	if (bad_spellings)
 		printf("%" PRIu32 " bad spellings found\n", bad_spellings);
 	printf("scanned %.2f lines per second\n",
