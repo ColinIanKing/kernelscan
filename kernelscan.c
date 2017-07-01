@@ -56,10 +56,11 @@
 #define TABLE_SIZE		(4*16384)
 #define HASH_MASK		(TABLE_SIZE - 1)
 
-#define MAX_WORD_NODES		(26)
-#define WORD_NODES_HEAP_SIZE	(180000)
-
+#define MAX_WORD_NODES		(39)
+#define WORD_NODES_HEAP_SIZE	(250000)
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
+
+#define BAD_MAPPING		(0xff)
 
 #define _VER_(major, minor, patchlevel)			\
 	((major * 10000) + (minor * 100) + patchlevel)
@@ -157,12 +158,8 @@ typedef struct {
 	size_t len;	/* length of format string */
 } format_t;
 
-typedef struct {
-	uint8_t		uint24[3];
-} PACKED uint24_t;
-
 typedef struct word_node {
-	uint24_t	word_node_offset[MAX_WORD_NODES];
+	uint32_t	word_node_offset[MAX_WORD_NODES];
 	bool		eow;	/* End of Word flag */
 } word_node_t ;
 
@@ -177,9 +174,9 @@ static uint8_t opt_flags = OPT_SOURCE_NAME;
 static void (*token_cat)(token_t *restrict token, token_t *restrict token_to_add);
 static char quotes[] = "\"";
 static char space[] = " ";
-static word_node_t word_nodes;
 static word_node_t word_node_heap[WORD_NODES_HEAP_SIZE];
-static word_node_t *word_node_heap_next = word_node_heap;
+static word_node_t *word_nodes = &word_node_heap[0];
+static word_node_t *word_node_heap_next = &word_node_heap[1];
 
 /*
  *  Kernel printk format specifiers
@@ -2207,6 +2204,22 @@ static char *printks[] = {
 	"zswap_pool_debug",
 };
 
+static inline get_char_t HOT map(const get_char_t ch)
+{
+	if (ch >= 'a' && ch <= 'z')
+		return ch - 'a';
+	if (ch >= 'A' && ch <= 'Z')
+		return ch - 'A';
+	if (ch >= '0' && ch <= '9')
+		return 26 + ch - '0';
+	if (ch == '_')
+		return 36;
+	if (ch == '\'')
+		return 37;
+
+	return BAD_MAPPING;
+}
+
 /*
  *  Get length of token
  */
@@ -2240,50 +2253,6 @@ static void NORETURN out_of_memory(void)
 	exit(EXIT_FAILURE);
 }
 
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-static inline void uint32to24(uint32_t *restrict from, uint24_t *restrict to)
-{
-	register uint8_t *restrict p1 = (uint8_t *)from;
-	register uint8_t *restrict p2 = (uint8_t *)to;
-
-	p2[0] = p1[0];
-	p2[1] = p1[1];
-	p2[2] = p1[2];
-}
-
-static inline void uint24to32(uint24_t *restrict from, uint32_t *restrict to)
-{
-	register uint8_t *restrict p1 = (uint8_t *)from;
-	register uint8_t *restrict p2 = (uint8_t *)to;
-
-	p2[0] = p1[0];
-	p2[1] = p1[1];
-	p2[2] = p1[2];
-	p2[3] = 0;
-}
-#else
-static inline void uint32to24(uint32_t *restrict from, uint24_t *restrict to)
-{
-	uint8_t *restrict p1 = (uint8_t *)from;
-	uint8_t *restrict p2 = (uint8_t *)to;
-
-	p2[2] = p1[3];
-	p2[1] = p1[2];
-	p2[0] = p1[1];
-}
-
-static inline void uint24to32(uint24_t *restrict from, uint32_t *restrict to)
-{
-	uint8_t *restrict p1 = (uint8_t *)from;
-	uint8_t *restrict p2 = (uint8_t *)to;
-
-	p2[0] = 0;
-	p2[1] = p1[0];
-	p2[2] = p1[1];
-	p2[3] = p1[2];
-}
-#endif
-
 /*
  *  is_like_a_printk()
  *	is a word in the printk hash table?
@@ -2300,7 +2269,6 @@ static inline bool is_like_a_printk(const char *str)
 	return false;
 }
 
-
 static inline void HOT add_word(register char *restrict str, register word_node_t *restrict node)
 {
 	register get_char_t ch = *str;
@@ -2308,22 +2276,18 @@ static inline void HOT add_word(register char *restrict str, register word_node_
 	if (word_node_heap_next - word_node_heap >= WORD_NODES_HEAP_SIZE)
 		out_of_memory();
 
-	if (UNLIKELY(!isalpha(ch))) {
+	ch = map(ch);
+
+	if (UNLIKELY(ch == BAD_MAPPING)) {
 		node->eow = true;
 	} else {
 		register word_node_t *new_node;
-		uint32_t i;
-		register uint24_t *offset;
-
-		ch = tolower(ch) - 'a';
-		offset = &node->word_node_offset[ch];
-		uint24to32(offset, &i);
-		if (i) {
-			new_node = (word_node_t *)(((uintptr_t)word_node_heap) + i);
+		register uint32_t offset = node->word_node_offset[ch];
+		if (offset) {
+			new_node = (word_node_t *)(((uintptr_t)word_node_heap) + offset);
 		} else {
 			new_node = word_node_heap_next++;
-			i = (uintptr_t)new_node - (uintptr_t)word_node_heap;
-			uint32to24(&i, offset);
+			node->word_node_offset[ch] = ((uintptr_t)new_node - (uintptr_t)word_node_heap);
 		}
 		add_word(++str, new_node);
 	}
@@ -2338,7 +2302,7 @@ static int read_dictionary(const char *dict)
 
 	while (fgets(buffer, sizeof(buffer), fp)) {
 		words++;
-		add_word(buffer, &word_nodes);
+		add_word(buffer, word_nodes);
 	}
 	(void)fclose(fp);
 
@@ -2349,18 +2313,18 @@ static inline bool HOT find_word(register char *restrict word, register word_nod
 {
 	for (;;) {
 		register get_char_t ch;
-		uint32_t i;
+		uint32_t offset;
 
 		if (UNLIKELY(!node))
 			return false;
 		ch = *word;
 		if (!ch)
 			return node->eow;
-		if (UNLIKELY(!isalpha(ch)))
+		ch = map(ch);
+		if (UNLIKELY(ch == BAD_MAPPING))
 			return true;
-		ch = tolower(ch) - 'a';
-		uint24to32(&node->word_node_offset[ch], &i);
-		node = i ? (word_node_t *)(((uintptr_t)word_node_heap) + i) : NULL;
+		offset = node->word_node_offset[ch];
+		node = offset ? (word_node_t *)(((uintptr_t)word_node_heap) + offset) : NULL;
 		word++;
 	}
 }
@@ -2409,7 +2373,7 @@ static void HOT check_words(token_t *token)
 		*p2 = '\0';
 
 		if (LIKELY(p2 - p1 > 1)) {
-			if (!find_word(p1, &word_nodes))
+			if (!find_word(p1, word_nodes))
 				add_bad_spelling(p1);
 		}
 		p1 = p2 + 1;
@@ -3580,7 +3544,6 @@ int main(int argc, char **argv)
 
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
 	if (opt_flags & OPT_CHECK_WORDS) {
-		word_node_heap_next = word_node_heap;
 
 		if (read_dictionary("/usr/share/dict/words") < 0) {
 			fprintf(stderr, "No dictionary found, expecting words in /usr/share/dict/words\n");
