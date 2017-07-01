@@ -56,7 +56,7 @@
 #define TABLE_SIZE		(4*16384)
 #define HASH_MASK		(TABLE_SIZE - 1)
 
-#define MAX_WORD_NODES		(39)
+#define MAX_WORD_NODES		(37)
 #define WORD_NODES_HEAP_SIZE	(250000)
 #define PRINTK_NODES_HEAP_SIZE	(12000)
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
@@ -2221,8 +2221,6 @@ static inline get_char_t HOT map(register const get_char_t ch)
 		return 26 + ch - '0';
 	if (ch == '_')
 		return 36;
-	if (ch == '\'')
-		return 37;
 
 	return BAD_MAPPING;
 }
