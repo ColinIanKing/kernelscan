@@ -149,7 +149,7 @@ typedef struct hash_entry {
 	char *token;
 } hash_entry_t;
 
-typedef get_char_t (*get_token_action_t)(parser_t *restrict p, token_t *restrict t, get_char_t ch);
+typedef get_char_t (*get_token_action_t)(parser_t *restrict p, token_t *restrict t, register get_char_t ch);
 
 /*
  *  printk format string table items
@@ -2211,7 +2211,7 @@ static char *printks[] = {
 	"zswap_pool_debug",
 };
 
-static inline get_char_t HOT map(const get_char_t ch)
+static inline get_char_t HOT map(register const get_char_t ch)
 {
 	if (ch >= 'a' && ch <= 'z')
 		return ch - 'a';
@@ -2230,7 +2230,7 @@ static inline get_char_t HOT map(const get_char_t ch)
 /*
  *  Get length of token
  */
-static inline size_t HOT token_len(token_t *t)
+static inline size_t HOT token_len(register token_t *t)
 {
 	return t->ptr - t->token;
 }
@@ -2240,7 +2240,7 @@ static inline size_t HOT token_len(token_t *t)
  *  djb2a()
  *	relatively fast string hash
  */
-static inline uint32_t HOT djb2a(const char *str)
+static inline uint32_t HOT djb2a(register const char *str)
 {
         register uint32_t c;
         register uint32_t hash = 5381;
@@ -2601,7 +2601,7 @@ static get_char_t skip_comments(parser_t *p)
  *  kernel doesn't have floats or doubles, so we
  *  can just parse decimal, octal or hex values.
  */
-static get_char_t parse_number(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static get_char_t parse_number(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	bool ishex = false;
 	bool isoct = false;
@@ -2699,7 +2699,7 @@ static get_char_t parse_number(parser_t *restrict p, token_t *restrict t, get_ch
 /*
  *  Parse identifiers
  */
-static get_char_t HOT parse_identifier(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static get_char_t HOT parse_identifier(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	t->type = TOKEN_IDENTIFIER;
 	token_append(t, ch);
@@ -2804,7 +2804,7 @@ static get_char_t parse_literal(
  *  Parse operators such as +, - which can
  *  be + or ++ forms.
  */
-static inline get_char_t parse_op(parser_t *restrict p, token_t *restrict t, get_char_t op)
+static inline get_char_t parse_op(parser_t *restrict p, token_t *restrict t, const get_char_t op)
 {
 	token_append(t, op);
 
@@ -2822,7 +2822,7 @@ static inline get_char_t parse_op(parser_t *restrict p, token_t *restrict t, get
 /*
  *  Parse -, --, ->
  */
-static inline get_char_t parse_minus(parser_t *restrict p, token_t *restrict t, get_char_t op)
+static inline get_char_t parse_minus(parser_t *restrict p, token_t *restrict t, const get_char_t op)
 {
 	register get_char_t ch;
 
@@ -2848,7 +2848,7 @@ static inline get_char_t parse_minus(parser_t *restrict p, token_t *restrict t, 
 	return PARSER_OK;
 }
 
-static inline get_char_t parse_skip_comments(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_skip_comments(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	get_char_t ret = skip_comments(p);
 
@@ -2864,7 +2864,7 @@ static inline get_char_t parse_skip_comments(parser_t *restrict p, token_t *rest
 	return PARSER_OK;
 }
 
-static inline get_char_t parse_simple(token_t *t, get_char_t ch, token_type_t type)
+static inline get_char_t parse_simple(token_t *t, get_char_t ch, const token_type_t type)
 {
 	token_append(t, ch);
 	token_eos(t);
@@ -2872,7 +2872,7 @@ static inline get_char_t parse_simple(token_t *t, get_char_t ch, token_type_t ty
 	return PARSER_OK;
 }
 
-static inline get_char_t parse_hash(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_hash(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 	(void)ch;
@@ -2883,14 +2883,14 @@ static inline get_char_t parse_hash(parser_t *restrict p, token_t *restrict t, g
 	return PARSER_OK;
 }
 
-static inline get_char_t parse_paren_opened(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_paren_opened(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_PAREN_OPENED);
 }
 
-static inline get_char_t parse_paren_closed(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_paren_closed(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 
@@ -2898,49 +2898,49 @@ static inline get_char_t parse_paren_closed(parser_t *restrict p, token_t *restr
 }
 
 
-static inline get_char_t parse_square_opened(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_square_opened(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_SQUARE_OPENED);
 }
 
-static inline get_char_t parse_square_closed(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_square_closed(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_SQUARE_CLOSED);
 }
 
-static inline get_char_t parse_less_than(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_less_than(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_LESS_THAN);
 }
 
-static inline get_char_t parse_greater_than(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_greater_than(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_GREATER_THAN);
 }
 
-static inline get_char_t parse_comma(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_comma(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_COMMA);
 }
 
-static inline get_char_t parse_terminal(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_terminal(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 
 	return parse_simple(t, ch, TOKEN_TERMINAL);
 }
 
-static inline get_char_t parse_misc_char(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_misc_char(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 
@@ -2949,17 +2949,17 @@ static inline get_char_t parse_misc_char(parser_t *restrict p, token_t *restrict
 	return PARSER_OK;
 }
 
-static inline get_char_t parse_literal_string(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_literal_string(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	return parse_literal(p, t, ch, TOKEN_LITERAL_STRING);
 }
 
-static inline get_char_t parse_literal_char(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_literal_char(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	return parse_literal(p, t, ch, TOKEN_LITERAL_CHAR);
 }
 
-static inline get_char_t parse_backslash(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_backslash(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	if (p->skip_white_space)
 		return PARSER_OK | PARSER_CONTINUE;
@@ -2979,14 +2979,14 @@ static inline get_char_t parse_backslash(parser_t *restrict p, token_t *restrict
 	return PARSER_OK;
 }
 
-static inline get_char_t parse_newline(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_newline(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	lines++;
 	lineno++;
 	return parse_backslash(p, t, ch);
 }
 
-static inline get_char_t parse_eof(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_eof(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 	(void)t;
@@ -2995,7 +2995,7 @@ static inline get_char_t parse_eof(parser_t *restrict p, token_t *restrict t, ge
 	return PARSER_EOF;
 }
 
-static inline get_char_t parse_whitespace(parser_t *restrict p, token_t *restrict t, get_char_t ch)
+static inline get_char_t parse_whitespace(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	(void)p;
 	(void)ch;
