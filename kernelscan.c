@@ -58,6 +58,7 @@
 
 #define MAX_WORD_NODES		(39)
 #define WORD_NODES_HEAP_SIZE	(250000)
+#define PRINTK_NODES_HEAP_SIZE	(50000)
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
 
 #define BAD_MAPPING		(0xff)
@@ -179,7 +180,7 @@ static word_node_t word_node_heap[WORD_NODES_HEAP_SIZE];
 static word_node_t *word_nodes = &word_node_heap[0];
 static word_node_t *word_node_heap_next = &word_node_heap[1];
 
-static word_node_t printk_node_heap[WORD_NODES_HEAP_SIZE];
+static word_node_t printk_node_heap[PRINTK_NODES_HEAP_SIZE];
 static word_node_t *printk_nodes = &printk_node_heap[0];
 static word_node_t *printk_node_heap_next = &printk_node_heap[1];
 
@@ -284,11 +285,6 @@ static format_t formats[] = {
 	{ "pGv", 3 },
 	{ "pNF", 3 },
 };
-
-/*
- *  hash table of printk like functions to scan for
- */
-static hash_entry_t *hash_printks[TABLE_SIZE];
 
 /*
  *  hash table of bad spellings
@@ -2258,31 +2254,16 @@ static void NORETURN out_of_memory(void)
 	exit(EXIT_FAILURE);
 }
 
-/*
- *  is_like_a_printk()
- *	is a word in the printk hash table?
- */
-static inline bool is_like_a_printk(const char *str)
-{
-	register hash_entry_t *hf = hash_printks[djb2a(str)];
-
-	while (hf) {
-		if (!__builtin_strcmp(str, hf->token))
-			return true;
-		hf = hf->next;
-	}
-	return false;
-}
-
 static inline void HOT add_word(
 	register char *restrict str,
 	register word_node_t *restrict node,
 	register word_node_t *restrict node_heap,
-	register word_node_t **restrict node_heap_next)
+	register word_node_t **restrict node_heap_next,
+	const ssize_t heap_size)
 {
 	register get_char_t ch = *str;
 
-	if (*node_heap_next - node_heap >= WORD_NODES_HEAP_SIZE)
+	if ((*node_heap_next - node_heap) >= heap_size)
 		out_of_memory();
 
 	ch = map(ch);
@@ -2299,11 +2280,11 @@ static inline void HOT add_word(
 			(*node_heap_next)++;
 			node->word_node_offset[ch] = ((uintptr_t)new_node - (uintptr_t)node_heap);
 		}
-		add_word(++str, new_node, node_heap, node_heap_next);
+		add_word(++str, new_node, node_heap, node_heap_next, heap_size);
 	}
 }
 
-static int read_dictionary(const char *dict)
+static inline int read_dictionary(const char *dict)
 {
 	char buffer[1024];
 	FILE *fp = fopen(dict, "r");
@@ -2312,14 +2293,16 @@ static int read_dictionary(const char *dict)
 
 	while (fgets(buffer, sizeof(buffer), fp)) {
 		words++;
-		add_word(buffer, word_nodes, word_node_heap, &word_node_heap_next);
+		add_word(buffer, word_nodes, word_node_heap, &word_node_heap_next, WORD_NODES_HEAP_SIZE);
 	}
 	(void)fclose(fp);
 
 	return 0;
 }
 
-static inline bool HOT find_word(register const char *restrict word, register word_node_t *restrict node)
+static inline bool HOT find_word(
+	register const char *restrict word,
+	register word_node_t *restrict node)
 {
 	for (;;) {
 		register get_char_t ch;
@@ -3341,7 +3324,7 @@ static void parse_kernel_messages(
 	token_clear(t);
 
 	while ((get_token(&p, t)) != PARSER_EOF) {
-		if (is_like_a_printk(t->token))
+		if (find_word(t->token, printk_nodes))
 			parse_kernel_message(path, &source_emit, &p, t, line, str);
 		token_clear(t);
 	}
@@ -3506,12 +3489,20 @@ static void dump_bad_spellings(void)
 	free(bad_spellings_sorted);
 }
 
+static inline void load_printks(void)
+{
+	size_t i;
+
+	for (i = 0; i < SIZEOF_ARRAY(printks); i++) {
+		add_word(printks[i], printk_nodes, printk_node_heap, &printk_node_heap_next, PRINTK_NODES_HEAP_SIZE);
+	}
+}
+
 /*
  *  Scan kernel source for printk like statements
  */
 int main(int argc, char **argv)
 {
-	size_t i;
 	token_t t, line, str;
 	double t1, t2;
 	hash_entry_t he_table[SIZEOF_ARRAY(printks)];
@@ -3552,6 +3543,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+	load_printks();
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
 	if (opt_flags & OPT_CHECK_WORDS) {
 
@@ -3559,10 +3551,6 @@ int main(int argc, char **argv)
 			fprintf(stderr, "No dictionary found, expecting words in /usr/share/dict/words\n");
 			exit(EXIT_FAILURE);
 		}
-	}
-
-	for (i = 0; i < SIZEOF_ARRAY(printks); i++) {
-		add_word(printks[i], printk_nodes, printk_node_heap, &printk_node_heap_next);
 	}
 
 	token_new(&t);
