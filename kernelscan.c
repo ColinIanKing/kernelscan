@@ -63,6 +63,8 @@
 
 #define BAD_MAPPING		(0xff)
 
+//#define PACKED_INDEX		(0)
+
 #define _VER_(major, minor, patchlevel)			\
 	((major * 10000) + (minor * 100) + patchlevel)
 
@@ -159,10 +161,21 @@ typedef struct {
 	size_t len;	/* length of format string */
 } format_t;
 
+#if defined PACKED_INDEX
+typedef struct {
+	uint8_t	 hi8;
+	uint16_t lo16;
+} PACKED index_t;
+#else
+typedef struct {
+	uint32_t lo32;
+} index_t;
+#endif
+
 typedef struct word_node {
-	uint32_t	word_node_index[MAX_WORD_NODES];
+	index_t		word_node_index[MAX_WORD_NODES];
 	bool		eow;	/* End of Word flag */
-} word_node_t ;
+} PACKED word_node_t ;
 
 static uint32_t finds;
 static uint32_t files;
@@ -2275,14 +2288,27 @@ static inline void HOT add_word(
 	if (UNLIKELY(ch == BAD_MAPPING)) {
 		node->eow = true;
 	} else {
+		register index_t *restrict ptr = &node->word_node_index[ch];
 		register word_node_t *new_node;
-		register uint32_t index = node->word_node_index[ch];
-		if (index) {
-			new_node = &node_heap[index];
+#if defined(PACKED_INDEX)
+		register uint32_t index32 = ((uint32_t)ptr->hi8 << 16) | ptr->lo16;
+#else
+		register uint32_t index32 = ptr->lo32;
+#endif
+
+		if (index32) {
+			new_node = &node_heap[index32];
 		} else {
 			new_node = *node_heap_next;
+			index32 = new_node - node_heap;
 			(*node_heap_next)++;
-			node->word_node_index[ch] = new_node - node_heap;
+
+#if defined(PACKED_INDEX)
+			ptr->hi8 = index32 >> 16;
+			ptr->lo16 = index32;
+#else
+			ptr->lo32 = index32;
+#endif
 		}
 		add_word(++str, new_node, node_heap, node_heap_next, heap_size);
 	}
@@ -2295,7 +2321,8 @@ static inline bool HOT find_word(
 {
 	for (;;) {
 		register get_char_t ch;
-		uint32_t index;
+		register index_t *ptr;
+		register uint32_t index32;
 
 		if (UNLIKELY(!node))
 			return false;
@@ -2306,8 +2333,13 @@ static inline bool HOT find_word(
 		ch = map(ch);
 		if (UNLIKELY(ch == BAD_MAPPING))
 			return true;
-		index = node->word_node_index[ch];
-		node = index ? &node_heap[index] : NULL;
+		ptr = &node->word_node_index[ch];
+#if defined(PACKED_INDEX)
+		index32 = ((uint32_t)ptr->hi8 << 16) | ptr->lo16;
+#else
+		index32 = ptr->lo32;
+#endif
+		node = index32 ? &node_heap[index32] : NULL;
 		word++;
 	}
 }
@@ -2327,7 +2359,6 @@ static inline int read_dictionary(const char *dict)
 
 	return 0;
 }
-
 
 static inline void HOT add_bad_spelling(const char *word)
 {
