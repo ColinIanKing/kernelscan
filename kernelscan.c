@@ -2284,6 +2284,23 @@ static inline void uint24to32(uint24_t *restrict from, uint32_t *restrict to)
 }
 #endif
 
+/*
+ *  is_like_a_printk()
+ *	is a word in the printk hash table?
+ */
+static inline bool is_like_a_printk(const char *str)
+{
+	register hash_entry_t *hf = hash_printks[djb2a(str)];
+
+	while (hf) {
+		if (!__builtin_strcmp(str, hf->token))
+			return true;
+		hf = hf->next;
+	}
+	return false;
+}
+
+
 static inline void HOT add_word(register char *restrict str, register word_node_t *restrict node)
 {
 	register get_char_t ch = *str;
@@ -2352,6 +2369,9 @@ static inline void HOT add_bad_spelling(const char *word)
 {
 	register const uint32_t h = djb2a(word);
 	register hash_entry_t *he = hash_bad_spellings[h];
+
+	if (is_like_a_printk(word))
+		return;
 
 	while (he) {
 		if (!strcmp(he->token, word))
@@ -3329,7 +3349,7 @@ static get_char_t parse_kernel_message(
 }
 
 /*
- *  Parse input looking for printk or dev_err calls
+ *  Parse input looking for printk like function calls
  */
 static void parse_kernel_messages(
 	const char *restrict path,
@@ -3347,16 +3367,8 @@ static void parse_kernel_messages(
 	token_clear(t);
 
 	while ((get_token(&p, t)) != PARSER_EOF) {
-		register uint32_t h = djb2a(t->token);
-		register hash_entry_t *hf = hash_printks[h];
-
-		while (hf) {
-			if (!__builtin_strcmp(t->token, hf->token)) {
-				parse_kernel_message(path, &source_emit, &p, t, line, str);
-				break;
-			}
-			hf = hf->next;
-		}
+		if (is_like_a_printk(t->token))
+			parse_kernel_message(path, &source_emit, &p, t, line, str);
 		token_clear(t);
 	}
 
