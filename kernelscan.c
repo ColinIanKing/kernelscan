@@ -160,7 +160,7 @@ typedef struct {
 } format_t;
 
 typedef struct word_node {
-	uint32_t	word_node_offset[MAX_WORD_NODES];
+	uint32_t	word_node_index[MAX_WORD_NODES];
 	bool		eow;	/* End of Word flag */
 } word_node_t ;
 
@@ -2276,13 +2276,13 @@ static inline void HOT add_word(
 		node->eow = true;
 	} else {
 		register word_node_t *new_node;
-		register uint32_t offset = node->word_node_offset[ch];
-		if (offset) {
-			new_node = (word_node_t *)(((uintptr_t)node_heap) + offset);
+		register uint32_t index = node->word_node_index[ch];
+		if (index) {
+			new_node = &node_heap[index];
 		} else {
 			new_node = *node_heap_next;
 			(*node_heap_next)++;
-			node->word_node_offset[ch] = ((uintptr_t)new_node - (uintptr_t)node_heap);
+			node->word_node_index[ch] = new_node - node_heap;
 		}
 		add_word(++str, new_node, node_heap, node_heap_next, heap_size);
 	}
@@ -2295,7 +2295,7 @@ static inline bool HOT find_word(
 {
 	for (;;) {
 		register get_char_t ch;
-		uint32_t offset;
+		uint32_t index;
 
 		if (UNLIKELY(!node))
 			return false;
@@ -2306,8 +2306,8 @@ static inline bool HOT find_word(
 		ch = map(ch);
 		if (UNLIKELY(ch == BAD_MAPPING))
 			return true;
-		offset = node->word_node_offset[ch];
-		node = offset ? (word_node_t *)(((uintptr_t)node_heap) + offset) : NULL;
+		index = node->word_node_index[ch];
+		node = index ? &node_heap[index] : NULL;
 		word++;
 	}
 }
