@@ -2556,7 +2556,7 @@ static inline void HOT token_cat_str(register token_t *restrict t, register cons
 	token_eos(t);
 }
 
-static get_char_t skip_macros(register parser_t *p)
+static get_char_t HOT skip_macros(register parser_t *p)
 {
 	bool continuation = false;
 
