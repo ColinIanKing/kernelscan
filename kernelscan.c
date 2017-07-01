@@ -58,7 +58,7 @@
 
 #define MAX_WORD_NODES		(39)
 #define WORD_NODES_HEAP_SIZE	(250000)
-#define PRINTK_NODES_HEAP_SIZE	(50000)
+#define PRINTK_NODES_HEAP_SIZE	(250000)
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
 
 #define BAD_MAPPING		(0xff)
@@ -176,13 +176,24 @@ static void (*token_cat)(token_t *restrict token, token_t *restrict token_to_add
 static char quotes[] = "\"";
 static char space[] = " ";
 
+/*
+ *  flat tree of dictionary words
+ */
 static word_node_t word_node_heap[WORD_NODES_HEAP_SIZE];
 static word_node_t *word_nodes = &word_node_heap[0];
 static word_node_t *word_node_heap_next = &word_node_heap[1];
 
+/*
+ *  flat tree of printk like function names
+ */
 static word_node_t printk_node_heap[PRINTK_NODES_HEAP_SIZE];
 static word_node_t *printk_nodes = &printk_node_heap[0];
 static word_node_t *printk_node_heap_next = &printk_node_heap[1];
+
+/*
+ *  hash table of bad spellings
+ */
+static hash_entry_t *hash_bad_spellings[TABLE_SIZE];
 
 /*
  *  Kernel printk format specifiers
@@ -285,11 +296,6 @@ static format_t formats[] = {
 	{ "pGv", 3 },
 	{ "pNF", 3 },
 };
-
-/*
- *  hash table of bad spellings
- */
-static hash_entry_t *hash_bad_spellings[TABLE_SIZE];
 
 /*
  *  various printk like functions to populate the
@@ -2284,6 +2290,30 @@ static inline void HOT add_word(
 	}
 }
 
+static inline bool HOT find_word(
+	register const char *restrict word,
+	register word_node_t *restrict node,
+	register word_node_t *restrict node_heap)
+{
+	for (;;) {
+		register get_char_t ch;
+		uint32_t offset;
+
+		if (UNLIKELY(!node))
+			return false;
+		ch = *word;
+
+		if (!ch)
+			return node->eow;
+		ch = map(ch);
+		if (UNLIKELY(ch == BAD_MAPPING))
+			return true;
+		offset = node->word_node_offset[ch];
+		node = offset ? (word_node_t *)(((uintptr_t)node_heap) + offset) : NULL;
+		word++;
+	}
+}
+
 static inline int read_dictionary(const char *dict)
 {
 	char buffer[1024];
@@ -2300,34 +2330,13 @@ static inline int read_dictionary(const char *dict)
 	return 0;
 }
 
-static inline bool HOT find_word(
-	register const char *restrict word,
-	register word_node_t *restrict node)
-{
-	for (;;) {
-		register get_char_t ch;
-		uint32_t offset;
-
-		if (UNLIKELY(!node))
-			return false;
-		ch = *word;
-		if (!ch)
-			return node->eow;
-		ch = map(ch);
-		if (UNLIKELY(ch == BAD_MAPPING))
-			return true;
-		offset = node->word_node_offset[ch];
-		node = offset ? (word_node_t *)(((uintptr_t)word_node_heap) + offset) : NULL;
-		word++;
-	}
-}
 
 static inline void HOT add_bad_spelling(const char *word)
 {
 	register const uint32_t h = djb2a(word);
 	register hash_entry_t *he = hash_bad_spellings[h];
 
-	if (find_word(word, printk_nodes))
+	if (find_word(word, printk_nodes, printk_node_heap))
 		return;
 
 	while (he) {
@@ -2366,7 +2375,7 @@ static void HOT check_words(token_t *token)
 		*p2 = '\0';
 
 		if (LIKELY(p2 - p1 > 1)) {
-			if (!find_word(p1, word_nodes))
+			if (!find_word(p1, word_nodes, word_node_heap))
 				add_bad_spelling(p1);
 		}
 		p1 = p2 + 1;
@@ -3324,7 +3333,8 @@ static void parse_kernel_messages(
 	token_clear(t);
 
 	while ((get_token(&p, t)) != PARSER_EOF) {
-		if (find_word(t->token, printk_nodes))
+		if ((t->type == TOKEN_IDENTIFIER) &&
+		    (find_word(t->token, printk_nodes, printk_node_heap)))
 			parse_kernel_message(path, &source_emit, &p, t, line, str);
 		token_clear(t);
 	}
@@ -3505,8 +3515,6 @@ int main(int argc, char **argv)
 {
 	token_t t, line, str;
 	double t1, t2;
-	hash_entry_t he_table[SIZEOF_ARRAY(printks)];
-	hash_entry_t *he = he_table;
 
 	token_cat = token_cat_normal;
 
@@ -3576,8 +3584,8 @@ int main(int argc, char **argv)
 	if (word_node_heap_next - word_node_heap)
 		printf("%" PRIu32 " words and %td nodes in dictionary heap\n",
 			words, (ptrdiff_t)(word_node_heap_next - word_node_heap));
-	printf("%" PRIu32 " printk style statments being searched\n",
-		(uint32_t)(he - he_table));
+	printf("%zd printk style statements being searched\n",
+		SIZEOF_ARRAY(printks));
 	if (bad_spellings)
 		printf("%" PRIu32 " bad spellings found\n", bad_spellings);
 	printf("scanned %.2f lines per second\n",
