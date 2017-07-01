@@ -2269,11 +2269,15 @@ static inline bool is_like_a_printk(const char *str)
 	return false;
 }
 
-static inline void HOT add_word(register char *restrict str, register word_node_t *restrict node)
+static inline void HOT add_word(
+	register char *restrict str,
+	register word_node_t *restrict node,
+	register word_node_t *restrict node_heap,
+	register word_node_t **restrict node_heap_next)
 {
 	register get_char_t ch = *str;
 
-	if (word_node_heap_next - word_node_heap >= WORD_NODES_HEAP_SIZE)
+	if (word_node_heap_next - node_heap >= WORD_NODES_HEAP_SIZE)
 		out_of_memory();
 
 	ch = map(ch);
@@ -2284,12 +2288,13 @@ static inline void HOT add_word(register char *restrict str, register word_node_
 		register word_node_t *new_node;
 		register uint32_t offset = node->word_node_offset[ch];
 		if (offset) {
-			new_node = (word_node_t *)(((uintptr_t)word_node_heap) + offset);
+			new_node = (word_node_t *)(((uintptr_t)node_heap) + offset);
 		} else {
-			new_node = word_node_heap_next++;
-			node->word_node_offset[ch] = ((uintptr_t)new_node - (uintptr_t)word_node_heap);
+			new_node = *node_heap_next;
+			(*node_heap_next)++;
+			node->word_node_offset[ch] = ((uintptr_t)new_node - (uintptr_t)node_heap);
 		}
-		add_word(++str, new_node);
+		add_word(++str, new_node, node_heap, node_heap_next);
 	}
 }
 
@@ -2302,7 +2307,7 @@ static int read_dictionary(const char *dict)
 
 	while (fgets(buffer, sizeof(buffer), fp)) {
 		words++;
-		add_word(buffer, word_nodes);
+		add_word(buffer, word_nodes, word_node_heap, &word_node_heap_next);
 	}
 	(void)fclose(fp);
 
