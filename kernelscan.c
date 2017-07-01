@@ -174,9 +174,14 @@ static uint8_t opt_flags = OPT_SOURCE_NAME;
 static void (*token_cat)(token_t *restrict token, token_t *restrict token_to_add);
 static char quotes[] = "\"";
 static char space[] = " ";
+
 static word_node_t word_node_heap[WORD_NODES_HEAP_SIZE];
 static word_node_t *word_nodes = &word_node_heap[0];
 static word_node_t *word_node_heap_next = &word_node_heap[1];
+
+static word_node_t printk_node_heap[WORD_NODES_HEAP_SIZE];
+static word_node_t *printk_nodes = &printk_node_heap[0];
+static word_node_t *printk_node_heap_next = &printk_node_heap[1];
 
 /*
  *  Kernel printk format specifiers
@@ -2277,7 +2282,7 @@ static inline void HOT add_word(
 {
 	register get_char_t ch = *str;
 
-	if (word_node_heap_next - node_heap >= WORD_NODES_HEAP_SIZE)
+	if (*node_heap_next - node_heap >= WORD_NODES_HEAP_SIZE)
 		out_of_memory();
 
 	ch = map(ch);
@@ -2314,7 +2319,7 @@ static int read_dictionary(const char *dict)
 	return 0;
 }
 
-static inline bool HOT find_word(register char *restrict word, register word_node_t *restrict node)
+static inline bool HOT find_word(register const char *restrict word, register word_node_t *restrict node)
 {
 	for (;;) {
 		register get_char_t ch;
@@ -2339,7 +2344,7 @@ static inline void HOT add_bad_spelling(const char *word)
 	register const uint32_t h = djb2a(word);
 	register hash_entry_t *he = hash_bad_spellings[h];
 
-	if (is_like_a_printk(word))
+	if (find_word(word, printk_nodes))
 		return;
 
 	while (he) {
@@ -3557,12 +3562,7 @@ int main(int argc, char **argv)
 	}
 
 	for (i = 0; i < SIZEOF_ARRAY(printks); i++) {
-		register const unsigned int h = djb2a(printks[i]);
-
-		he->token = printks[i];
-		he->next = hash_printks[h];
-		hash_printks[h] = he;
-		he++;
+		add_word(printks[i], printk_nodes, printk_node_heap, &printk_node_heap_next);
 	}
 
 	token_new(&t);
