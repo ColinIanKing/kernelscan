@@ -2344,18 +2344,39 @@ static inline bool HOT find_word(
 	}
 }
 
-static inline int read_dictionary(const char *dict)
+static inline int read_dictionary(const char *dictfile)
 {
-	char buffer[1024];
-	FILE *fp = fopen(dict, "r");
-	if (!fp)
+	int fd;
+	char *ptr, *dict, *dict_end;
+	struct stat buf;
+	char buffer[4096];
+	const char *buffer_end = buffer + (sizeof(buffer)) - 1;
+
+	fd = open(dictfile, O_RDONLY);
+	if (fd < 0)
+		return -1;
+	if (fstat(fd, &buf) < 0)
 		return -1;
 
-	while (fgets(buffer, sizeof(buffer), fp)) {
-		words++;
+	ptr = dict = mmap(NULL, buf.st_size, PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
+	if (dict == MAP_FAILED) {
+		(void)close(fd);
+		return -1;
+	}
+	dict_end = dict + buf.st_size;
+
+	while (ptr < dict_end) {
+		char *bptr = buffer;
+
+		while (ptr < dict_end && bptr < buffer_end && *ptr != '\n') {
+			*bptr++ = *ptr++;
+		}
+		*bptr = '\0';
+		ptr++;
 		add_word(buffer, word_nodes, word_node_heap, &word_node_heap_next, WORD_NODES_HEAP_SIZE);
 	}
-	(void)fclose(fp);
+	(void)munmap(dict, buf.st_size);
+	(void)close(fd);
 
 	return 0;
 }
