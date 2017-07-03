@@ -2355,8 +2355,10 @@ static inline int read_dictionary(const char *dictfile)
 	fd = open(dictfile, O_RDONLY);
 	if (fd < 0)
 		return -1;
-	if (fstat(fd, &buf) < 0)
+	if (fstat(fd, &buf) < 0) {
+		(void)close(fd);
 		return -1;
+	}
 
 	ptr = dict = mmap(NULL, buf.st_size, PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
 	if (dict == MAP_FAILED) {
