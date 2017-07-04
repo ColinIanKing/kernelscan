@@ -2375,6 +2375,7 @@ static inline int read_dictionary(const char *dictfile)
 		}
 		*bptr = '\0';
 		ptr++;
+		words++;
 		add_word(buffer, word_nodes, word_node_heap, &word_node_heap_next, WORD_NODES_HEAP_SIZE);
 	}
 	(void)munmap(dict, buf.st_size);
@@ -3633,7 +3634,7 @@ int main(int argc, char **argv)
 	printf("\n%" PRIu32 " files scanned\n", files);
 	printf("%" PRIu32 " lines scanned\n", lines);
 	printf("%" PRIu32 " print statements found\n", finds);
-	if (word_node_heap_next - word_node_heap)
+	if (words)
 		printf("%" PRIu32 " words and %td nodes in dictionary heap\n",
 			words, (ptrdiff_t)(word_node_heap_next - word_node_heap));
 	printf("%zd printk style statements being searched\n",
