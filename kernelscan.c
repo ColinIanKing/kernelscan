@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  */
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -3469,7 +3470,7 @@ static int HOT parse_file(
 	int fd;
 	int rc = 0;
 
-	fd = open(path, O_RDONLY);
+	fd = open(path, O_RDONLY | O_NOATIME);
 	if (UNLIKELY(fd < 0)) {
 		fprintf(stderr, "Cannot open %s, errno=%d (%s)\n",
 			path, errno, strerror(errno));
