@@ -19,7 +19,12 @@ BINDIR=/usr/bin
 
 VERSION=0.2.11
 
-CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program -fivopts
+ifeq ($(CC),clang)
+CFLAGS += -O3 -Wall -Wextra -ftree-vectorize
+else
+CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program -fivopts 
+endif
+
 CFLAGS += -DVERSION='"$(VERSION)"'
 
 #
@@ -34,7 +39,7 @@ endif
 
 kernelscan: kernelscan.o Makefile
 	$(CC) $< -o $@
-	strip $@
+	#strip $@
 
 clean:
 	rm -f kernelscan.o kernelscan kernelscan*snap
