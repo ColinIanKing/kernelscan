@@ -99,6 +99,18 @@
 #define PACKED
 #endif
 
+#if defined(__GNUC__) && NEED_GNUC(3,4,0)
+#define PURE	__attribute__((pure))
+#else
+#define PURE
+#endif
+
+#if defined(__GNUC__) && NEED_GNUC(3,4,0)
+#define CONST	__attribute__((const))
+#else
+#define CONST
+#endif
+
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
  */
@@ -2225,7 +2237,7 @@ static char *printks[] = {
 	"zswap_pool_debug",
 };
 
-static inline get_char_t HOT map(register const get_char_t ch)
+static inline get_char_t CONST PURE HOT map(register const get_char_t ch)
 {
 	if (ch >= 'a' && ch <= 'z')
 		return ch - 'a';
@@ -2242,7 +2254,7 @@ static inline get_char_t HOT map(register const get_char_t ch)
 /*
  *  Get length of token
  */
-static inline size_t HOT token_len(register token_t *t)
+static inline size_t CONST PURE HOT token_len(register token_t *t)
 {
 	return t->ptr - t->token;
 }
@@ -2252,7 +2264,7 @@ static inline size_t HOT token_len(register token_t *t)
  *  djb2a()
  *	relatively fast string hash
  */
-static inline uint32_t HOT djb2a(register const char *str)
+static inline uint32_t CONST PURE HOT djb2a(register const char *str)
 {
         register uint32_t c;
         register uint32_t hash = 5381;
@@ -2487,7 +2499,7 @@ static inline void HOT unget_char(parser_t *p)
 		p->ptr--;
 }
 
-static int cmp_format(const void *restrict p1, const void *restrict p2)
+static int HOT CONST PURE cmp_format(const void *restrict p1, const void *restrict p2)
 {
 	format_t *restrict f1 = (format_t *restrict )p1;
 	format_t *restrict f2 = (format_t *restrict )p2;
