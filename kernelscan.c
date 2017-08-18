@@ -41,6 +41,7 @@
 #define OPT_SOURCE_NAME		0x00000008
 #define OPT_FORMAT_STRIP	0x00000010
 #define OPT_CHECK_WORDS		0x00000020
+#define OPT_PARSE_STRINGS	0x00000040
 
 #define UNLIKELY(c)		__builtin_expect((c), 0)
 #define LIKELY(c)		__builtin_expect((c), 1)
@@ -143,6 +144,14 @@ typedef struct {
 	size_t len;		/* Length of the token buffer */
 	token_type_t type;	/* The type of token we think it is */
 } token_t;
+
+typedef void (*parse_func_t)(
+        const char *restrict path,
+        unsigned char *restrict data,
+        unsigned char *restrict data_end,
+        token_t *restrict t,
+        token_t *restrict line,
+        token_t *restrict str);
 
 typedef uint16_t get_char_t;
 
@@ -3409,6 +3418,38 @@ static void parse_kernel_messages(
 		putchar('\n');
 }
 
+/*
+ *  Parse input looking for literal strings
+ */
+static void parse_literal_strings(
+	const char *restrict path,
+	unsigned char *restrict data,
+	unsigned char *restrict data_end,
+	token_t *restrict t,
+	token_t *restrict line,
+	token_t *restrict str)
+{
+	parser_t p;
+
+	(void)path;
+	(void)line;
+	(void)str;
+
+	parser_new(&p, data, data_end, true);
+	bool source_emit = false;
+
+	token_clear(t);
+
+	while ((get_token(&p, t)) != PARSER_EOF) {
+		if (t->type == TOKEN_LITERAL_STRING)
+			check_words(t);
+		token_clear(t);
+	}
+
+	if (source_emit && (opt_flags & OPT_SOURCE_NAME))
+		putchar('\n');
+}
+
 static void show_usage(void)
 {
 	fprintf(stderr, "kernelscan: the fast kernel source message scanner\n\n");
@@ -3417,6 +3458,7 @@ static void show_usage(void)
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
 	fprintf(stderr, "  -f     replace kernel %% format specifiers with a space\n");
 	fprintf(stderr, "  -h     show this help\n");
+	fprintf(stderr, "  -l     scan all literal strings and not print statements\n");
 	fprintf(stderr, "  -n     find messages with missing \\n newline\n");
 	fprintf(stderr, "  -s     just print literal strings\n");
 	fprintf(stderr, "  -x     exclude the source file name from the output\n");
@@ -3482,6 +3524,9 @@ static int HOT parse_file(
 	int fd;
 	int rc = 0;
 
+	const parse_func_t parse_func = opt_flags & OPT_PARSE_STRINGS ?
+		parse_literal_strings : parse_kernel_messages;
+
 	fd = open(path, O_RDONLY | O_NOATIME);
 	if (UNLIKELY(fd < 0)) {
 		fprintf(stderr, "Cannot open %s, errno=%d (%s)\n",
@@ -3515,7 +3560,7 @@ static int HOT parse_file(
 					return -1;
 				}
 				__builtin_prefetch(data, 0, 1);
-				parse_kernel_messages(path, data, data + buf.st_size, t, line, str);
+				parse_func(path, data, data + buf.st_size, t, line, str);
 				(void)munmap(data, (size_t)buf.st_size);
 			}
 			files++;
@@ -3601,6 +3646,9 @@ int main(int argc, char **argv)
 		case 'h':
 			show_usage();
 			exit(EXIT_SUCCESS);
+		case 'l':
+			opt_flags |= OPT_PARSE_STRINGS;
+			break;
 		case 'n':
 			opt_flags |= OPT_MISSING_NEWLINE;
 			break;
