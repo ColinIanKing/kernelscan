@@ -3630,7 +3630,7 @@ int main(int argc, char **argv)
 	token_cat = token_cat_normal;
 
 	for (;;) {
-		int c = getopt(argc, argv, "cefhnsx");
+		int c = getopt(argc, argv, "cefhlnsx");
 		if (c == -1)
  			break;
 		switch (c) {
