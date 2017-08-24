@@ -3409,8 +3409,10 @@ static void parse_kernel_messages(
 
 	while ((get_token(&p, t)) != PARSER_EOF) {
 		if ((t->type == TOKEN_IDENTIFIER) &&
-		    (find_word(t->token, printk_nodes, printk_node_heap)))
+		    (find_word(t->token, printk_nodes, printk_node_heap))) {
 			parse_kernel_message(path, &source_emit, &p, t, line, str);
+			source_emit = true;
+		}
 		token_clear(t);
 	}
 
@@ -3436,7 +3438,6 @@ static void parse_literal_strings(
 	(void)str;
 
 	parser_new(&p, data, data_end, true);
-	bool source_emit = false;
 
 	token_clear(t);
 
@@ -3445,9 +3446,6 @@ static void parse_literal_strings(
 			check_words(t);
 		token_clear(t);
 	}
-
-	if (source_emit && (opt_flags & OPT_SOURCE_NAME))
-		putchar('\n');
 }
 
 static void show_usage(void)
