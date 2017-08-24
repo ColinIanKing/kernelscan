@@ -2300,12 +2300,12 @@ static inline void HOT add_word(
 	register word_node_t **restrict node_heap_next,
 	const ssize_t heap_size)
 {
-	register get_char_t ch = *str;
+	register get_char_t ch;
 
 	if ((*node_heap_next - node_heap) >= heap_size)
 		out_of_memory();
 
-	ch = map(ch);
+	ch = map(*str);
 
 	if (UNLIKELY(ch == BAD_MAPPING)) {
 		node->eow = true;
