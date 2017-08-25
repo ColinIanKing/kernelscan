@@ -3416,6 +3416,8 @@ static void parse_kernel_messages(
 		token_clear(t);
 	}
 
+	if (opt_flags & OPT_CHECK_WORDS)
+		return;
 	if (source_emit && (opt_flags & OPT_SOURCE_NAME))
 		putchar('\n');
 }
