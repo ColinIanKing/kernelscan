@@ -38,7 +38,7 @@ CFLAGS += -Wabi -Wcast-qual -Wfloat-equal -Wmissing-declarations \
 endif
 
 kernelscan: kernelscan.o Makefile
-	$(CC) $< -o $@
+	$(CC) $< -o $@ -lrt -pthread
 	#strip $@
 
 clean:

@@ -33,7 +33,11 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <fcntl.h>
+#include <mqueue.h>
+#include <signal.h>
+#include <pthread.h>
 
 #define OPT_ESCAPE_STRIP	0x00000001
 #define OPT_MISSING_NEWLINE	0x00000002
@@ -64,6 +68,8 @@
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
 
 #define BAD_MAPPING		(0xff)
+
+#define STACK_SIZE		(1024 * 256)
 
 //#define PACKED_INDEX		(0)
 
@@ -154,6 +160,17 @@ typedef void (*parse_func_t)(
         token_t *restrict str);
 
 typedef uint16_t get_char_t;
+
+typedef struct {
+	void		*data;
+	size_t		size;
+	parse_func_t	parse_func;
+} msg_t;
+
+typedef struct {
+	char *path;
+	mqd_t mq;
+} context_t;
 
 /*
  *  Parser context
@@ -2284,7 +2301,7 @@ static inline uint32_t CONST PURE HOT djb2a(register const char *str)
         return hash & HASH_MASK;
 }
 
-static int parse_file(char *restrict path, token_t *restrict t, token_t *restrict line, token_t *restrict str);
+static int parse_file(char *restrict path, const mqd_t mq);
 
 static void NORETURN out_of_memory(void)
 {
@@ -3464,11 +3481,7 @@ static void show_usage(void)
 	fprintf(stderr, "  -x     exclude the source file name from the output\n");
 }
 
-static int parse_dir(
-	char *restrict path,
-	token_t *restrict t,
-	token_t *restrict line,
-	token_t *restrict str)
+static int parse_dir(char *restrict path, const mqd_t mq)
 {
 	DIR *dp;
 	struct dirent *d;
@@ -3507,7 +3520,7 @@ static int parse_dir(
 		/* Don't follow symlinks */
 		if (S_ISLNK(buf.st_mode))
 			continue;
-		parse_file(filepath, t, line, str);
+		parse_file(filepath, mq);
 	}
 	(void)closedir(dp);
 
@@ -3516,9 +3529,7 @@ static int parse_dir(
 
 static int HOT parse_file(
 	char *restrict path,
-	token_t *restrict t,
-	token_t *restrict line,
-	token_t *restrict str)
+	const mqd_t mq)
 {
 	struct stat buf;
 	int fd;
@@ -3548,20 +3559,21 @@ static int HOT parse_file(
 		    ((len >= 2) && !__builtin_strcmp(path + len - 2, ".h")) ||
 		    ((len >= 4) && !__builtin_strcmp(path + len - 4, ".cpp")))) {
 			if (LIKELY(buf.st_size > 0)) {
-				unsigned char *data;
+				msg_t msg;
 
-				//(void)posix_fadvise(fd, 0, buf.st_size, POSIX_FADV_SEQUENTIAL | POSIX_FADV_NOREUSE);
-				data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
+				//(void)posix_fadvise(fd, 0, buf.st_size, POSIX_FADV_SEQUENTIAL);
+				msg.data = mmap(NULL, (size_t)buf.st_size, PROT_READ,
 					MAP_PRIVATE | MAP_POPULATE, fd, 0);
-				if (UNLIKELY(data == MAP_FAILED)) {
+				if (UNLIKELY(msg.data == MAP_FAILED)) {
 					(void)close(fd);
 					fprintf(stderr, "Cannot mmap %s, errno=%d (%s)\n",
 						path, errno, strerror(errno));
 					return -1;
 				}
-				__builtin_prefetch(data, 0, 1);
-				parse_func(path, data, data + buf.st_size, t, line, str);
-				(void)munmap(data, (size_t)buf.st_size);
+
+				msg.parse_func = parse_func;
+				msg.size = buf.st_size;
+				mq_send(mq, (char *)&msg, sizeof(msg), 1);
 			}
 			files++;
 		}
@@ -3569,8 +3581,78 @@ static int HOT parse_file(
 	} else {
 		(void)close(fd);
 		if (S_ISDIR(buf.st_mode))
-			rc = parse_dir(path, t, line, str);
+			rc = parse_dir(path, mq);
 	}
+	return rc;
+}
+
+
+static void *reader(void *arg)
+{
+	static void *nowt = NULL;
+	const context_t *ctxt = arg;
+	msg_t msg = { NULL, 0, NULL };
+
+	parse_file(ctxt->path, ctxt->mq);
+	mq_send(ctxt->mq, (char *)&msg, sizeof(msg), 1);
+
+	return &nowt;
+}
+
+static int parse_path(
+	char *path,
+	token_t *restrict t,
+	token_t *restrict line,
+	token_t *restrict str)
+{
+	mqd_t mq = -1;
+	struct mq_attr attr;
+	char mq_name[64];
+	int rc;
+	context_t ctxt;
+	pthread_t pthread;
+
+	(void)snprintf(mq_name, sizeof(mq_name), "/kernelscan-%i", getpid());
+
+	attr.mq_flags = 0;
+	attr.mq_maxmsg = 10;
+	attr.mq_msgsize = sizeof(msg_t);
+	attr.mq_curmsgs = 0;
+
+	mq = mq_open(mq_name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, &attr);
+	if (mq < 0)
+		return -1;
+
+	ctxt.path = path;
+	ctxt.mq = mq;
+
+	rc = pthread_create(&pthread, NULL, reader, &ctxt);
+	if (rc) {
+		rc = -1;
+		goto err;
+	}
+
+	for (;;) {
+		msg_t msg;
+
+		rc = mq_receive(mq, (char *)&msg, sizeof(msg), NULL);
+		if (UNLIKELY(rc < 0))
+			break;
+		if (UNLIKELY(msg.data == 0))
+			break;
+		
+		__builtin_prefetch(msg.data, 0, 3);
+		__builtin_prefetch(msg.data + 64, 0, 3);
+		msg.parse_func(path, msg.data, msg.data + msg.size, t, line, str);
+		(void)munmap(msg.data, msg.size);
+	}
+	
+	rc = 0;
+err:
+	(void)pthread_join(pthread, NULL);
+	(void)mq_close(mq);
+	(void)mq_unlink(mq_name);
+
 	return rc;
 }
 
@@ -3681,7 +3763,7 @@ int main(int argc, char **argv)
 
 	t1 = gettime_to_double();
 	while (argc > optind) {
-		parse_file(argv[optind], &t, &line, &str);
+		parse_path(argv[optind], &t, &line, &str);
 		optind++;
 	}
 	t2 = gettime_to_double();
