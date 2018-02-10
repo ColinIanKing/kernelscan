@@ -69,8 +69,6 @@
 
 #define BAD_MAPPING		(0xff)
 
-#define STACK_SIZE		(1024 * 256)
-
 //#define PACKED_INDEX		(0)
 
 #define _VER_(major, minor, patchlevel)			\
