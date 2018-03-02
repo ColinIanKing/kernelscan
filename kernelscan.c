@@ -2808,6 +2808,47 @@ static get_char_t HOT parse_identifier(parser_t *restrict p, token_t *restrict t
 }
 
 /*
+ *  Handle escape char deletion when at the end of a literal string,
+ *  need to transform:
+ * 	"foo\n" -> "foo" 
+ * 	"foo\nbar" -> "foo bar"
+ *	"foo\n"<whitespaces>"bar" -> "foo "<whitespaces>"bar"
+ */
+static inline void literal_peek(
+	parser_t *restrict p,
+	token_t *restrict t,
+	const get_char_t literal)
+{
+	register get_char_t ch;
+	uint32_t got;
+
+	ch = get_char(p);
+	if (UNLIKELY(ch != literal)) {
+		unget_char(p);
+		token_append(t, ' ');
+		return;
+	}
+	got = 1;
+	for (;;) {
+		got++;
+		ch = get_char(p);
+		if (UNLIKELY(ch == TOKEN_WHITE_SPACE)) {
+			continue;
+		} else if (LIKELY(ch == literal)) {
+			token_append(t, ' ');
+			break;
+		} else if (UNLIKELY(ch == PARSER_EOF)) {
+			break;
+		}
+		break;
+	}
+	while (got) {
+		unget_char(p);
+		got--;
+	}
+}
+
+/*
  *  Parse literal strings
  */
 static get_char_t parse_literal(
@@ -2845,10 +2886,7 @@ static get_char_t parse_literal(
 				case 'r':
 				case 't':
 				case 'v':
-					ch = get_char(p);
-					unget_char(p);
-					if (ch != literal)
-						token_append(t, ' ');
+					literal_peek(p, t, literal);
 					continue;
 				case 'x':
 				case '0':
