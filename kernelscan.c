@@ -116,6 +116,11 @@
 #define CONST
 #endif
 
+#if defined(__GNUC__) && NEED_GNUC(3,3,0)
+#define ALIGNED(a)	__attribute__((aligned(a)))
+#endif
+
+
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
  */
@@ -2261,7 +2266,7 @@ static char *printks[] = {
 	"zswap_pool_debug",
 };
 
-static uint8_t mapping[256];
+static uint8_t mapping[256] ALIGNED(64);
 static inline get_char_t CONST PURE HOT map(register const get_char_t ch);
 
 static void set_mapping(void)
