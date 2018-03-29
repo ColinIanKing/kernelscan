@@ -2261,18 +2261,32 @@ static char *printks[] = {
 	"zswap_pool_debug",
 };
 
+static uint8_t mapping[256];
+static inline get_char_t CONST PURE HOT map(register const get_char_t ch);
+
+static void set_mapping(void)
+{
+	size_t i;
+
+	for (i = 0; i < SIZEOF_ARRAY(mapping); i++) {
+		mapping[i] = BAD_MAPPING;
+	}
+
+	for (i = 'a'; i <= 'z'; i++) {
+		mapping[i] = i - 'a';
+	}
+	for (i = 'A'; i <= 'Z'; i++) {
+		mapping[i] = i - 'A';
+	}
+	for (i = '0'; i <= '9'; i++) {
+		mapping[i] = 26 + i - '0';
+	}
+	mapping['_'] = 36;
+}
+
 static inline get_char_t CONST PURE HOT map(register const get_char_t ch)
 {
-	if (ch >= 'a' && ch <= 'z')
-		return ch - 'a';
-	if (ch >= 'A' && ch <= 'Z')
-		return ch - 'A';
-	if (ch >= '0' && ch <= '9')
-		return 26 + ch - '0';
-	if (ch == '_')
-		return 36;
-
-	return BAD_MAPPING;
+	return mapping[ch];
 }
 
 /*
@@ -3783,6 +3797,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+	set_mapping();
 	load_printks();
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
 	if (opt_flags & OPT_CHECK_WORDS) {
