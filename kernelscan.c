@@ -3407,6 +3407,7 @@ static get_char_t parse_kernel_message(
 				if (opt_flags & OPT_CHECK_WORDS)
 					check_words(line);
 				else {
+					char *ptr;
 					if (! *source_emit) {
 						if (opt_flags & OPT_SOURCE_NAME)
 							printf("Source: %s\n", path);
@@ -3414,9 +3415,11 @@ static get_char_t parse_kernel_message(
 					}
 					if (opt_flags & OPT_FORMAT_STRIP)
 						strip_format(line->token);
-					printf("%s%s", line->token,
-						(opt_flags & OPT_LITERAL_STRINGS) ? "" : ";");
-					printf("\n");
+
+					for (ptr = line->token; isblank(*ptr); ptr++)
+						;
+
+					printf(" %s%s\n", ptr, (opt_flags & OPT_LITERAL_STRINGS) ? "" : ";");
 				}
 				finds++;
 			}
@@ -3483,7 +3486,7 @@ static void parse_kernel_messages(
 		if ((t->type == TOKEN_IDENTIFIER) &&
 		    (find_word(t->token, printk_nodes, printk_node_heap))) {
 			parse_kernel_message(path, &source_emit, &p, t, line, str);
-			source_emit = true;
+			//source_emit = true;
 		}
 		token_clear(t);
 	}
