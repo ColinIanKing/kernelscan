@@ -219,6 +219,7 @@ typedef struct word_node {
 	bool		eow;	/* End of Word flag */
 } PACKED word_node_t ;
 
+static uint64_t bytes_total;
 static uint32_t finds;
 static uint32_t files;
 static uint32_t lines;
@@ -3899,6 +3900,7 @@ static int HOT parse_file(
 						path, errno, strerror(errno));
 					return -1;
 				}
+				bytes_total += buf.st_size;
 
 				msg.parse_func = parse_func;
 				msg.size = buf.st_size;
@@ -4080,7 +4082,6 @@ int main(int argc, char **argv)
 	load_printks();
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
 	if (opt_flags & OPT_CHECK_WORDS) {
-
 		if (read_dictionary("/usr/share/dict/words") < 0) {
 			fprintf(stderr, "No dictionary found, expecting words in /usr/share/dict/words\n");
 			exit(EXIT_FAILURE);
@@ -4105,7 +4106,7 @@ int main(int argc, char **argv)
 	dump_bad_spellings();
 
 	printf("\n%" PRIu32 " files scanned\n", files);
-	printf("%" PRIu32 " lines scanned\n", lines);
+	printf("%" PRIu32 " lines scanned (%.3f"  " Mbytes)\n", lines, (float)bytes_total / (float)(1024 * 1024));
 	printf("%" PRIu32 " print statements found\n", finds);
 	if (words)
 		printf("%" PRIu32 " words and %td nodes in dictionary heap\n",
