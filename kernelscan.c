@@ -225,6 +225,7 @@ static uint32_t files;
 static uint32_t lines;
 static uint32_t lineno;
 static uint32_t bad_spellings;
+static uint32_t bad_spellings_total;
 static uint32_t words;
 
 static uint8_t opt_flags = OPT_SOURCE_NAME;
@@ -2720,6 +2721,8 @@ static inline void HOT add_bad_spelling(const char *word)
 	if (find_word(word, printk_nodes, printk_node_heap))
 		return;
 
+	bad_spellings_total++;
+
 	while (he) {
 		if (!strcmp(he->token, word))
 			return;
@@ -4114,7 +4117,7 @@ int main(int argc, char **argv)
 	printf("%zd printk style statements being searched\n",
 		SIZEOF_ARRAY(printks));
 	if (bad_spellings)
-		printf("%" PRIu32 " bad spellings found\n", bad_spellings);
+		printf("%" PRIu32 " unique bad spellings found (%" PRIu32 " non-unique)\n", bad_spellings, bad_spellings_total);
 	printf("scanned %.2f lines per second\n",
 		FLOAT_CMP(t1, t2) ? 0.0 : (double)lines / (t2 - t1));
 	printf("(kernelscan " VERSION ")\n");
