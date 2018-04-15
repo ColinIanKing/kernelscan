@@ -168,6 +168,7 @@ typedef struct {
 	void		*data;
 	size_t		size;
 	parse_func_t	parse_func;
+	char		filename[PATH_MAX];
 } msg_t;
 
 typedef struct {
@@ -3907,6 +3908,7 @@ static int HOT parse_file(
 
 				msg.parse_func = parse_func;
 				msg.size = buf.st_size;
+				strcpy(msg.filename, path);
 				mq_send(mq, (char *)&msg, sizeof(msg), 1);
 			}
 			files++;
@@ -3925,7 +3927,7 @@ static void *reader(void *arg)
 {
 	static void *nowt = NULL;
 	const context_t *ctxt = arg;
-	msg_t msg = { NULL, 0, NULL };
+	msg_t msg = { NULL, 0, NULL, "" };
 
 	parse_file(ctxt->path, ctxt->mq);
 	mq_send(ctxt->mq, (char *)&msg, sizeof(msg), 1);
@@ -3977,7 +3979,7 @@ static int parse_path(
 
 		__builtin_prefetch(msg.data, 0, 3);
 		__builtin_prefetch(msg.data + 64, 0, 3);
-		msg.parse_func(path, msg.data, msg.data + msg.size, t, line, str);
+		msg.parse_func(msg.filename, msg.data, msg.data + msg.size, t, line, str);
 		(void)munmap(msg.data, msg.size);
 	}
 
