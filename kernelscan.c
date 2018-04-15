@@ -3908,7 +3908,7 @@ static int HOT parse_file(
 
 				msg.parse_func = parse_func;
 				msg.size = buf.st_size;
-				strcpy(msg.filename, path);
+				strncpy(msg.filename, path, sizeof(msg.filename) - 1);
 				mq_send(mq, (char *)&msg, sizeof(msg), 1);
 			}
 			files++;
