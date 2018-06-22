@@ -233,6 +233,7 @@ static uint8_t opt_flags = OPT_SOURCE_NAME;
 static void (*token_cat)(token_t *restrict token, token_t *restrict token_to_add);
 static char quotes[] = "\"";
 static char space[] = " ";
+static bool is_not_whitespace[256];
 
 /*
  *  flat tree of dictionary words
@@ -3418,7 +3419,10 @@ static inline get_char_t parse_eof(parser_t *restrict p, token_t *restrict t, re
 	return PARSER_EOF;
 }
 
-static inline get_char_t parse_whitespace(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
+static inline get_char_t parse_whitespace(
+	parser_t *restrict p,
+	token_t *restrict t,
+	register get_char_t ch)
 {
 	(void)p;
 	(void)ch;
@@ -3428,9 +3432,8 @@ static inline get_char_t parse_whitespace(parser_t *restrict p, token_t *restric
 
 	for (;;) {
 		ch = get_char(p);
-		if (ch != ' ' && ch != '\t') {
+		if (is_not_whitespace[ch])
 			break;
-		}
 	}
 	unget_char(p);
 	token_eos(t);
@@ -4037,6 +4040,13 @@ static inline void load_printks(void)
 	}
 }
 
+static void set_is_not_whitespace(void)
+{
+	memset(is_not_whitespace, true, sizeof(is_not_whitespace));
+	is_not_whitespace[' '] = false;
+	is_not_whitespace['\t'] = false;
+}
+
 /*
  *  Scan kernel source for printk like statements
  */
@@ -4083,6 +4093,7 @@ int main(int argc, char **argv)
 		}
 	}
 
+	set_is_not_whitespace();
 	set_mapping();
 	load_printks();
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
