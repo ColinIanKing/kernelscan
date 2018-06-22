@@ -120,6 +120,13 @@
 #define ALIGNED(a)	__attribute__((aligned(a)))
 #endif
 
+/* GCC5.0+ target_clones attribute */
+#if defined(__GNUC__) && NEED_GNUC(5,5,0) && STRESS_X86 && \
+    !defined(__gnu_hurd__) && !defined(__FreeBSD_Kernel__)
+#define TARGET_CLONES   __attribute__((target_clones("sse","sse2","ssse3", "sse4.1", "sse4a", "avx","avx2","default")))
+#else
+#define TARGET_CLONES
+#endif
 
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
@@ -2583,7 +2590,7 @@ static inline size_t CONST PURE HOT token_len(register token_t *t)
  *  djb2a()
  *	relatively fast string hash
  */
-static inline uint32_t CONST PURE HOT djb2a(register const char *str)
+static inline uint32_t TARGET_CLONES CONST PURE HOT djb2a(register const char *str)
 {
         register uint32_t c;
         register uint32_t hash = 5381;
@@ -2743,7 +2750,7 @@ static inline void HOT add_bad_spelling(const char *word)
 	bad_spellings++;
 }
 
-static void HOT check_words(token_t *token)
+static void TARGET_CLONES HOT check_words(token_t *token)
 {
 	register char *p1 = token->token, *p2, *p3;
 
@@ -2940,7 +2947,7 @@ static get_char_t HOT skip_macros(register parser_t *p)
 /*
  *  Parse C comments and just throw them away
  */
-static get_char_t skip_comments(parser_t *p)
+static get_char_t HOT TARGET_CLONES skip_comments(parser_t *p)
 {
 	register get_char_t ch, nextch;
 
@@ -2988,7 +2995,7 @@ static get_char_t skip_comments(parser_t *p)
  *  kernel doesn't have floats or doubles, so we
  *  can just parse decimal, octal or hex values.
  */
-static get_char_t parse_number(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
+static get_char_t HOT TARGET_CLONES parse_number(parser_t *restrict p, token_t *restrict t, register get_char_t ch)
 {
 	bool ishex = false;
 	bool isoct = false;
@@ -3146,7 +3153,7 @@ static inline void literal_peek(
 /*
  *  Parse literal strings
  */
-static get_char_t parse_literal(
+static get_char_t TARGET_CLONES parse_literal(
 	parser_t *restrict p,
 	token_t *restrict t,
 	const get_char_t literal,
@@ -3600,7 +3607,7 @@ static void token_cat_just_literal_string(
 		token_cat_str(token, token_to_add->token);
 }
 
-static void strip_format(char *line)
+static void TARGET_CLONES strip_format(char *line)
 {
 	register char *ptr1 = line, *ptr2 = line;
 
@@ -3633,7 +3640,7 @@ static void strip_format(char *line)
 /*
  *  Parse a kernel message, like printk() or dev_err()
  */
-static get_char_t parse_kernel_message(
+static get_char_t HOT TARGET_CLONES parse_kernel_message(
 	const char *restrict path,
 	bool *restrict source_emit,
 	parser_t *restrict p,
