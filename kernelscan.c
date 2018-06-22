@@ -2968,8 +2968,6 @@ static get_char_t HOT TARGET_CLONES skip_comments(parser_t *p)
 	if (LIKELY(nextch == '*')) {
 		for (;;) {
 			ch = get_char(p);
-			if (UNLIKELY(ch == PARSER_EOF))
-				return ch;
 
 			if (UNLIKELY(ch == '*')) {
 				ch = get_char(p);
@@ -2981,6 +2979,8 @@ static get_char_t HOT TARGET_CLONES skip_comments(parser_t *p)
 
 				unget_char(p);
 			}
+			if (UNLIKELY(ch == PARSER_EOF))
+				return ch;
 		}
 	}
 
