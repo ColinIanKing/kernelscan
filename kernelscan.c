@@ -2929,8 +2929,6 @@ static get_char_t HOT skip_macros(register parser_t *p)
 		register get_char_t ch;
 
 		ch = get_char(p);
-		if (UNLIKELY(ch == PARSER_EOF))
-			break;
 		if (ch == '\n') {
 			lines++;
 			lineno++;
@@ -2939,7 +2937,8 @@ static get_char_t HOT skip_macros(register parser_t *p)
 			continuation = false;
 		} else if (ch == '\\') {
 			continuation = true;
-		}
+		} else if (UNLIKELY(ch == PARSER_EOF))
+			break;
 	}
 	return PARSER_EOF;
 }
@@ -2971,11 +2970,11 @@ static get_char_t HOT TARGET_CLONES skip_comments(parser_t *p)
 
 			if (UNLIKELY(ch == '*')) {
 				ch = get_char(p);
-				if (UNLIKELY(ch == PARSER_EOF))
-					return ch;
 
 				if (LIKELY(ch == '/'))
 					return PARSER_COMMENT_FOUND;
+				else if (UNLIKELY(ch == PARSER_EOF))
+					return ch;
 
 				unget_char(p);
 			}
@@ -3009,11 +3008,6 @@ static get_char_t HOT TARGET_CLONES parse_number(parser_t *restrict p, token_t *
 		token_append(t, ch);
 
 		nextch1 = get_char(p);
-		if (UNLIKELY(nextch1 == PARSER_EOF)) {
-			token_append(t, ch);
-			token_eos(t);
-			return PARSER_OK;
-		}
 
 		if (nextch1 >= '0' && nextch1 <= '8') {
 			/* Must be an octal value */
@@ -3022,17 +3016,16 @@ static get_char_t HOT TARGET_CLONES parse_number(parser_t *restrict p, token_t *
 		} else if (nextch1 == 'x' || nextch1 == 'X') {
 			/* Is it hexadecimal? */
 			nextch2 = get_char(p);
-			if (UNLIKELY(nextch2 == PARSER_EOF)) {
-				unget_char(p);
-				token_eos(t);
-				return PARSER_OK;
-			}
 
 			if (isxdigit(nextch2)) {
 				/* Hexadecimal */
 				token_append(t, nextch1);
 				ch = nextch2;
 				ishex = true;
+			} else if (UNLIKELY(nextch2 == PARSER_EOF)) {
+				unget_char(p);
+				token_eos(t);
+				return PARSER_OK;
 			} else {
 				/* Nope */
 				unget_char(p);
@@ -3040,6 +3033,10 @@ static get_char_t HOT TARGET_CLONES parse_number(parser_t *restrict p, token_t *
 				token_eos(t);
 				return PARSER_OK;
 			}
+		} else if (UNLIKELY(nextch1 == PARSER_EOF)) {
+			token_append(t, ch);
+			token_eos(t);
+			return PARSER_OK;
 		} else {
 			unget_char(p);
 			token_eos(t);
@@ -3165,10 +3162,6 @@ static get_char_t TARGET_CLONES parse_literal(
 
 	for (;;) {
 		register get_char_t ch = get_char(p);
-		if (UNLIKELY(ch == PARSER_EOF)) {
-			token_eos(t);
-			return PARSER_OK;
-		}
 
 		if (ch == '\\') {
 			if (opt_flags & OPT_ESCAPE_STRIP) {
@@ -3219,6 +3212,10 @@ static get_char_t TARGET_CLONES parse_literal(
 
 		if (UNLIKELY(ch == literal)) {
 			token_append(t, ch);
+			token_eos(t);
+			return PARSER_OK;
+		}
+		if (UNLIKELY(ch == PARSER_EOF)) {
 			token_eos(t);
 			return PARSER_OK;
 		}
@@ -3282,13 +3279,13 @@ static inline get_char_t parse_skip_comments(parser_t *restrict p, token_t *rest
 {
 	get_char_t ret = skip_comments(p);
 
-	if (UNLIKELY(ret == PARSER_EOF))
-		return ret;
-
 	if (ret == PARSER_COMMENT_FOUND) {
 		ret |= PARSER_CONTINUE;
 		return ret;
 	}
+	if (UNLIKELY(ret == PARSER_EOF))
+		return ret;
+
 	token_append(t, ch);
 	token_eos(t);
 	return PARSER_OK;
