@@ -3099,7 +3099,6 @@ static get_char_t HOT parse_identifier(parser_t *restrict p, token_t *restrict t
 			return PARSER_OK;
 		}
 		token_append(t, ch);
-		continue;
 	}
 }
 
