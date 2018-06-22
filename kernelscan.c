@@ -234,6 +234,7 @@ static void (*token_cat)(token_t *restrict token, token_t *restrict token_to_add
 static char quotes[] = "\"";
 static char space[] = " ";
 static bool is_not_whitespace[256];
+static bool is_not_identifier[256];
 
 /*
  *  flat tree of dictionary words
@@ -3092,14 +3093,13 @@ static get_char_t HOT parse_identifier(parser_t *restrict p, token_t *restrict t
 
 	for (;;) {
 		ch = get_char(p);
-		if (LIKELY(isalnum(ch) || UNLIKELY(ch == '_'))) {
-			token_append(t, ch);
-			continue;
+		if (UNLIKELY(is_not_identifier[ch])) {
+			unget_char(p);
+			token_eos(t);
+			return PARSER_OK;
 		}
-
-		unget_char(p);
-		token_eos(t);
-		return PARSER_OK;
+		token_append(t, ch);
+		continue;
 	}
 }
 
@@ -4047,6 +4047,21 @@ static void set_is_not_whitespace(void)
 	is_not_whitespace['\t'] = false;
 }
 
+static void set_is_not_identifier(void)
+{
+	size_t i;
+
+	memset(is_not_identifier, true, sizeof(is_not_identifier));
+	for (i = 0; i < 26; i++) {
+		is_not_identifier[i + 'a'] = false;
+		is_not_identifier[i + 'A'] = false;
+	}
+	for (i = 0; i < 10; i++) {
+		is_not_identifier[i + '0'] = false;
+	}
+	is_not_identifier['_'] = false;
+}
+
 /*
  *  Scan kernel source for printk like statements
  */
@@ -4094,6 +4109,8 @@ int main(int argc, char **argv)
 	}
 
 	set_is_not_whitespace();
+	set_is_not_identifier();
+
 	set_mapping();
 	load_printks();
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
