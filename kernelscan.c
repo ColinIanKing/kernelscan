@@ -3531,6 +3531,7 @@ static get_token_action_t get_token_actions[] = {
 	['X'] = parse_identifier,
 	['Y'] = parse_identifier,
 	['Z'] = parse_identifier,
+	['_'] = parse_identifier,
 	['"'] = parse_literal_string,
 	['\''] = parse_literal_char,
 	['\\'] = parse_backslash,
