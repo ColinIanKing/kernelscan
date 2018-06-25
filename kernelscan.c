@@ -38,6 +38,9 @@
 #include <mqueue.h>
 #include <signal.h>
 #include <pthread.h>
+#if defined(__linux__)
+#include <linux/types.h>
+#endif
 
 #define OPT_ESCAPE_STRIP	0x00000001
 #define OPT_MISSING_NEWLINE	0x00000002
