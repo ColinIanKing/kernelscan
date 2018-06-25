@@ -2838,8 +2838,8 @@ static inline void HOT unget_char(parser_t *p)
 
 static int HOT CONST PURE cmp_format(const void *RESTRICT p1, const void *RESTRICT p2)
 {
-	format_t *RESTRICT f1 = (format_t *RESTRICT )p1;
-	format_t *RESTRICT f2 = (format_t *RESTRICT )p2;
+	const format_t *RESTRICT f1 = (const format_t *RESTRICT )p1;
+	const format_t *RESTRICT f2 = (const format_t *RESTRICT )p2;
 
 	register const size_t l1 = f1->len;
 	register const size_t l2 = f2->len;
