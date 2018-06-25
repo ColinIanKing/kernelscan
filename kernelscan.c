@@ -17,7 +17,6 @@
  *
  */
 #define _GNU_SOURCE
-#define _ISOC11_SOURCE
 
 #include <stdio.h>
 #include <stdbool.h>
@@ -2871,8 +2870,10 @@ static inline void HOT token_clear(token_t *t)
  */
 static void token_new(token_t *t)
 {
-	t->token = aligned_alloc(64, TOKEN_CHUNK_SIZE);
-	if (UNLIKELY(!t->token))
+	int ret;
+
+	ret = posix_memalign((void **)&t->token, 64, TOKEN_CHUNK_SIZE);
+	if (ret != 0)
 		out_of_memory();
 	t->len = TOKEN_CHUNK_SIZE;
 	token_clear(t);
