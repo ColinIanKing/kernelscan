@@ -17,6 +17,7 @@
  *
  */
 #define _GNU_SOURCE
+#define _ISOC11_SOURCE
 
 #include <stdio.h>
 #include <stdbool.h>
