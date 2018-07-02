@@ -61,8 +61,6 @@
 #define PARSER_EOF		(256)
 #define PARSER_CONTINUE		(512)
 
-#define CH_MASK			(0xff)
-
 #define TOKEN_CHUNK_SIZE	(32768)
 #define TABLE_SIZE		(4*16384)
 #define HASH_MASK		(TABLE_SIZE - 1)
@@ -251,8 +249,8 @@ static uint8_t opt_flags = OPT_SOURCE_NAME;
 static void (*token_cat)(token_t *RESTRICT token, token_t *RESTRICT token_to_add);
 static char quotes[] = "\"";
 static char space[] = " ";
-static bool is_not_whitespace[PARSER_CONTINUE + 1];
-static bool is_not_identifier[PARSER_CONTINUE + 1];
+static bool is_not_whitespace[256];
+static bool is_not_identifier[256];
 
 /*
  *  flat tree of dictionary words
@@ -3109,8 +3107,10 @@ static get_char_t HOT parse_identifier(parser_t *RESTRICT p, token_t *RESTRICT t
 	token_append(t, ch);
 
 	for (;;) {
-		ch = get_char(p) & CH_MASK;
-		if (UNLIKELY(is_not_identifier[ch])) {
+		ch = get_char(p);
+		register uint8_t ch8 = (uint8_t)ch;
+
+		if (UNLIKELY(is_not_identifier[ch8])) {
 			unget_char(p);
 			token_eos(t);
 			return PARSER_OK;
@@ -3438,17 +3438,18 @@ static inline get_char_t parse_eof(parser_t *RESTRICT p, token_t *RESTRICT t, re
 static inline get_char_t parse_whitespace(
 	parser_t *RESTRICT p,
 	token_t *RESTRICT t,
-	register get_char_t ch)
+	const get_char_t ch)
 {
 	(void)p;
-	(void)ch;
 
 	t->type = TOKEN_IDENTIFIER;
 	token_append(t, ch);
 
 	for (;;) {
-		ch = get_char(p) & CH_MASK;
-		if (is_not_whitespace[ch])
+		register uint8_t ch8;
+
+		ch8 = get_char(p);
+		if (is_not_whitespace[ch8])
 			break;
 	}
 	unget_char(p);
