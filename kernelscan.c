@@ -3448,7 +3448,7 @@ static inline get_char_t parse_whitespace(
 	for (;;) {
 		register uint8_t ch8;
 
-		ch8 = get_char(p);
+		ch8 = (uint8_t)get_char(p);
 		if (is_not_whitespace[ch8])
 			break;
 	}
