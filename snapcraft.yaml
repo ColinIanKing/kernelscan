@@ -14,8 +14,6 @@ parts:
         build-packages:
             - gcc
             - make
-        stage-packages:
-            - wamerican
 
 apps:
     kernelscan:
