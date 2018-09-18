@@ -108,7 +108,8 @@
 #endif
 
 #if defined(__GNUC__) && NEED_GNUC(3,4,0)
-#define PURE	__attribute__((pure))
+/* #define PURE	__attribute__((pure)) */
+#define PURE	
 #else
 #define PURE
 #endif
