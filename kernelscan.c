@@ -3436,7 +3436,7 @@ static inline get_char_t parse_eof(parser_t *RESTRICT p, token_t *RESTRICT t, re
 	return PARSER_EOF;
 }
 
-static inline get_char_t parse_whitespace(
+static inline get_char_t TARGET_CLONES parse_whitespace(
 	parser_t *RESTRICT p,
 	token_t *RESTRICT t,
 	const get_char_t ch)
