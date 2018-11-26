@@ -1,5 +1,5 @@
 name: kernelscan
-version: 0.2.13
+version: 0.2.19
 summary: fast kernel source error message scanner
 description: kernelscan parses the kernel source and extracts all the kernel error messages, It also reformats the messages by joining multi-line literal strings to make it easier to look for error message text.
 type: app
@@ -14,6 +14,9 @@ parts:
         build-packages:
             - gcc
             - make
+
+        stage-packages:
+            - wamerican
 
 apps:
     kernelscan:
