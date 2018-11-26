@@ -42,6 +42,8 @@
 #include <linux/types.h>
 #endif
 
+#define DICTIONARY		"/usr/share/dict/words"
+
 #define OPT_ESCAPE_STRIP	0x00000001
 #define OPT_MISSING_NEWLINE	0x00000002
 #define OPT_LITERAL_STRINGS	0x00000004
@@ -4134,7 +4136,12 @@ int main(int argc, char **argv)
 	load_printks();
 	(void)qsort(formats, SIZEOF_ARRAY(formats), sizeof(format_t), cmp_format);
 	if (opt_flags & OPT_CHECK_WORDS) {
-		if (read_dictionary("/usr/share/dict/words") < 0) {
+		int ret;
+
+		ret = read_dictionary(DICTIONARY);
+		if (ret)
+			ret = read_dictionary("/snap/kernelscan/current" DICTIONARY);
+		if (ret) {
 			fprintf(stderr, "No dictionary found, expecting words in /usr/share/dict/words\n");
 			exit(EXIT_FAILURE);
 		}
