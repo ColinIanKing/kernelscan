@@ -4170,7 +4170,7 @@ int main(int argc, char **argv)
 	if (words)
 		printf("%" PRIu32 " words and %td nodes in dictionary heap\n",
 			words, (ptrdiff_t)(word_node_heap_next - word_node_heap));
-	printf("%zd printk style statements being searched\n",
+	printf("%zu printk style statements being searched\n",
 		SIZEOF_ARRAY(printks));
 	if (bad_spellings)
 		printf("%" PRIu32 " unique bad spellings found (%" PRIu32 " non-unique)\n", bad_spellings, bad_spellings_total);
