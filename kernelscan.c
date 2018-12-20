@@ -3893,7 +3893,7 @@ static int HOT parse_file(
 	int fd;
 	int rc = 0;
 
-	const parse_func_t parse_func = opt_flags & OPT_PARSE_STRINGS ?
+	const parse_func_t parse_func = (opt_flags & OPT_PARSE_STRINGS) ?
 		parse_literal_strings : parse_kernel_messages;
 
 	fd = open(path, O_RDONLY | O_NOATIME);
