@@ -4002,8 +4002,8 @@ static int parse_path(
 			break;
 
 		__builtin_prefetch(msg.data, 0, 3);
-		__builtin_prefetch(msg.data + 64, 0, 3);
-		msg.parse_func(msg.filename, msg.data, msg.data + msg.size, t, line, str);
+		__builtin_prefetch((uint8_t *)msg.data + 64, 0, 3);
+		msg.parse_func(msg.filename, msg.data, (uint8_t *)msg.data + msg.size, t, line, str);
 		(void)munmap(msg.data, msg.size);
 	}
 
