@@ -2597,7 +2597,6 @@ static inline size_t CONST PURE HOT token_len(register token_t *t)
 	return t->ptr - t->token;
 }
 
-
 /*
  *  djb2a()
  *	relatively fast string hash
@@ -2622,6 +2621,25 @@ static void NORETURN out_of_memory(void)
 	exit(EXIT_FAILURE);
 }
 
+/*
+ *  index_unpack_ptr()
+ *	gcc-9 really dislikes taking the address of an element
+ *	from a packed struct. However, to keep the cache hit
+ *	low, the misalignment vs cache penalty is worthwhile.
+ *	This is a horrible hack to silence the warnings. I'm sure
+ *	gcc will figure this out sometime in the future.
+ *	As it stands, this inlined function has no overhead as
+ *	the optimizer does the right thing.
+ */
+static inline index_t *index_unpack_ptr(
+	register word_node_t *RESTRICT node,
+	register get_char_t ch)
+{
+	register void *vptr = (void *)&node->word_node_index[ch];
+
+	return (index_t *)vptr;		/* Cast away our sins */
+}
+
 static inline void HOT add_word(
 	register char *RESTRICT str,
 	register word_node_t *RESTRICT node,
@@ -2639,7 +2657,7 @@ static inline void HOT add_word(
 	if (UNLIKELY(ch == BAD_MAPPING)) {
 		node->eow = true;
 	} else {
-		register index_t *RESTRICT ptr = &node->word_node_index[ch];
+		register index_t *RESTRICT ptr = index_unpack_ptr(node, ch);
 		register word_node_t *new_node;
 #if defined(PACKED_INDEX)
 		register uint32_t index32 = ((uint32_t)ptr->hi8 << 16) | ptr->lo16;
@@ -2684,7 +2702,7 @@ static inline bool HOT find_word(
 		ch = map(ch);
 		if (UNLIKELY(ch == BAD_MAPPING))
 			return true;
-		ptr = &node->word_node_index[ch];
+		ptr = index_unpack_ptr(node, ch);
 #if defined(PACKED_INDEX)
 		index32 = ((uint32_t)ptr->hi8 << 16) | ptr->lo16;
 #else
