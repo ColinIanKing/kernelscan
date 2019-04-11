@@ -42,8 +42,6 @@
 #include <linux/types.h>
 #endif
 
-#define DICTIONARY		"/usr/share/dict/words"
-
 #define OPT_ESCAPE_STRIP	0x00000001
 #define OPT_MISSING_NEWLINE	0x00000002
 #define OPT_LITERAL_STRINGS	0x00000004
@@ -139,6 +137,8 @@
 #else
 #define RESTRICT
 #endif
+
+static const char dictionary[] = "/usr/share/dict/american-english";
 
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
@@ -2722,8 +2722,12 @@ static inline int read_dictionary(const char *dictfile)
 	const char *buffer_end = buffer + (sizeof(buffer)) - 1;
 
 	fd = open(dictfile, O_RDONLY);
-	if (fd < 0)
-		return -1;
+	if (fd < 0) {
+		(void)snprintf(buffer, sizeof(buffer), "/snap/kernelscan/current/%s", dictfile);
+		fd = open(buffer, O_RDONLY);
+		if (fd < 0)
+			return -1;
+	}
 	if (fstat(fd, &buf) < 0) {
 		(void)close(fd);
 		return -1;
@@ -4165,11 +4169,9 @@ int main(int argc, char **argv)
 	if (opt_flags & OPT_CHECK_WORDS) {
 		int ret;
 
-		ret = read_dictionary(DICTIONARY);
-		if (ret)
-			ret = read_dictionary("/snap/kernelscan/current" DICTIONARY);
+		ret = read_dictionary(dictionary);
 		if (ret) {
-			fprintf(stderr, "No dictionary found, expecting words in /usr/share/dict/words\n");
+			fprintf(stderr, "No dictionary found, expecting words in %s\n", dictionary);
 			exit(EXIT_FAILURE);
 		}
 	}

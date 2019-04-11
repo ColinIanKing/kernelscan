@@ -17,6 +17,9 @@ parts:
 
         stage-packages:
             - wamerican
+        prime:
+            - usr/bin
+            - usr/share/dict
 
 apps:
     kernelscan:
