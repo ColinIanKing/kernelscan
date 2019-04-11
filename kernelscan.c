@@ -3851,6 +3851,7 @@ static void show_usage(void)
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
 	fprintf(stderr, "  -f     replace kernel %% format specifiers with a space\n");
 	fprintf(stderr, "  -h     show this help\n");
+	fprintf(stderr, "  -k	  same as -ceflsx\n");
 	fprintf(stderr, "  -l     scan all literal strings and not print statements\n");
 	fprintf(stderr, "  -n     find messages with missing \\n newline\n");
 	fprintf(stderr, "  -s     just print literal strings\n");
@@ -4112,7 +4113,7 @@ int main(int argc, char **argv)
 	token_cat = token_cat_normal;
 
 	for (;;) {
-		int c = getopt(argc, argv, "cefhlnsx");
+		int c = getopt(argc, argv, "cefhklnsx");
 		if (c == -1)
  			break;
 		switch (c) {
@@ -4128,6 +4129,14 @@ int main(int argc, char **argv)
 		case 'h':
 			show_usage();
 			exit(EXIT_SUCCESS);
+		case 'k':
+			opt_flags |= (OPT_CHECK_WORDS |
+				      OPT_ESCAPE_STRIP |
+				      OPT_FORMAT_STRIP |
+				      OPT_LITERAL_STRINGS |
+				      OPT_PARSE_STRINGS);
+			opt_flags &= ~OPT_SOURCE_NAME;
+			break;
 		case 'l':
 			opt_flags |= OPT_PARSE_STRINGS;
 			break;
