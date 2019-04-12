@@ -3855,7 +3855,7 @@ static void show_usage(void)
 	fprintf(stderr, "  -e     strip out C escape sequences\n");
 	fprintf(stderr, "  -f     replace kernel %% format specifiers with a space\n");
 	fprintf(stderr, "  -h     show this help\n");
-	fprintf(stderr, "  -k	  same as -ceflsx\n");
+	fprintf(stderr, "  -k     same as -ceflsx\n");
 	fprintf(stderr, "  -l     scan all literal strings and not print statements\n");
 	fprintf(stderr, "  -n     find messages with missing \\n newline\n");
 	fprintf(stderr, "  -s     just print literal strings\n");
