@@ -109,7 +109,7 @@
 
 #if defined(__GNUC__) && NEED_GNUC(3,4,0)
 /* #define PURE	__attribute__((pure)) */
-#define PURE	
+#define PURE
 #else
 #define PURE
 #endif
@@ -3893,7 +3893,6 @@ static int parse_dir(char *RESTRICT path, const mqd_t mq)
 			while ((*ptr = *(ptr2++)))
 				ptr++;
 			*ptr = '\0';
-	
 			if (lstat(filepath, &buf) < 0)
 				continue;
 			/* Don't follow symlinks */
