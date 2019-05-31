@@ -2653,9 +2653,7 @@ static inline void HOT add_word(
 
 	ch = map(*str);
 
-	if (UNLIKELY(ch == BAD_MAPPING)) {
-		node->eow = true;
-	} else {
+	if (LIKELY(ch != BAD_MAPPING)) {
 		register index_t *RESTRICT ptr = index_unpack_ptr(node, ch);
 		register word_node_t *new_node;
 #if defined(PACKED_INDEX)
@@ -2679,6 +2677,8 @@ static inline void HOT add_word(
 #endif
 		}
 		add_word(++str, new_node, node_heap, node_heap_next, heap_size);
+	} else {
+		node->eow = true;
 	}
 }
 
@@ -2695,20 +2695,21 @@ static inline bool HOT find_word(
 		if (UNLIKELY(!node))
 			return false;
 		ch = *word;
-
 		if (!ch)
 			return node->eow;
 		ch = map(ch);
-		if (UNLIKELY(ch == BAD_MAPPING))
-			return true;
-		ptr = index_unpack_ptr(node, ch);
+		if (LIKELY(ch != BAD_MAPPING)) {
+			ptr = index_unpack_ptr(node, ch);
 #if defined(PACKED_INDEX)
-		index32 = ((uint32_t)ptr->hi8 << 16) | ptr->lo16;
+			index32 = ((uint32_t)ptr->hi8 << 16) | ptr->lo16;
 #else
-		index32 = ptr->lo32;
+			index32 = ptr->lo32;
 #endif
-		node = index32 ? &node_heap[index32] : NULL;
-		word++;
+			node = index32 ? &node_heap[index32] : NULL;
+			word++;
+		} else {
+			return true;
+		}
 	}
 }
 
@@ -2934,11 +2935,12 @@ static void HOT token_expand(token_t *t)
  */
 static inline void HOT token_append(register token_t *t, register const get_char_t ch)
 {
-	if (UNLIKELY(t->ptr >= (t->token_end)))
+	if (LIKELY(t->ptr < (t->token_end))) {
+		*(t->ptr++) = ch;
+	} else {
 		token_expand(t);
-
-	/* Enough space, just add char */
-	*(t->ptr++) = ch;
+		*(t->ptr++) = ch;
+	}
 }
 
 static inline void HOT token_eos(token_t *t)
@@ -3167,11 +3169,11 @@ static inline void literal_peek(
 	for (;;) {
 		got++;
 		ch = get_char(p);
-		if (UNLIKELY(ch == TOKEN_WHITE_SPACE)) {
-			continue;
-		} else if (LIKELY(ch == literal)) {
+		if (LIKELY(ch == literal)) {
 			token_append(t, ' ');
 			break;
+		} else if (UNLIKELY(ch == TOKEN_WHITE_SPACE)) {
+			continue;
 		} else if (UNLIKELY(ch == PARSER_EOF)) {
 			break;
 		}
@@ -3237,12 +3239,12 @@ static get_char_t TARGET_CLONES parse_literal(
 			} else {
 				token_append(t, ch);
 				ch = get_char(p);
-				if (UNLIKELY(ch == PARSER_EOF)) {
-					token_eos(t);
-					return ch;
+				if (LIKELY(ch != PARSER_EOF)) {
+					token_append(t, ch);
+					continue;
 				}
-				token_append(t, ch);
-				continue;
+				token_eos(t);
+				return ch;
 			}
 		}
 
@@ -3885,21 +3887,20 @@ static int parse_dir(char *RESTRICT path, const mqd_t mq)
 		struct stat buf;
 		register char *ptr;
 
-		if (UNLIKELY(d->d_name[0] == '.'))
-			continue;
-
-		ptr = ptr1;
-		ptr2 = d->d_name;
-		while ((*ptr = *(ptr2++)))
-			ptr++;
-		*ptr = '\0';
-
-		if (lstat(filepath, &buf) < 0)
-			continue;
-		/* Don't follow symlinks */
-		if (S_ISLNK(buf.st_mode))
-			continue;
-		parse_file(filepath, mq);
+		if (LIKELY(d->d_name[0] != '.')) {
+			ptr = ptr1;
+			ptr2 = d->d_name;
+			while ((*ptr = *(ptr2++)))
+				ptr++;
+			*ptr = '\0';
+	
+			if (lstat(filepath, &buf) < 0)
+				continue;
+			/* Don't follow symlinks */
+			if (S_ISLNK(buf.st_mode))
+				continue;
+			parse_file(filepath, mq);
+		}
 	}
 	(void)closedir(dp);
 
