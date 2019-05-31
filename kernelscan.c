@@ -65,7 +65,7 @@
 #define TABLE_SIZE		(4*16384)
 #define HASH_MASK		(TABLE_SIZE - 1)
 
-#define MAX_WORD_NODES		(37)
+#define MAX_WORD_NODES		(27)	/* a..z -> 0..25 and _/0..9 as 26 */
 #define WORD_NODES_HEAP_SIZE	(250000)
 #define PRINTK_NODES_HEAP_SIZE	(12000)
 #define SIZEOF_ARRAY(x)		(sizeof(x) / sizeof(x[0]))
@@ -247,13 +247,14 @@ static uint32_t lineno;
 static uint32_t bad_spellings;
 static uint32_t bad_spellings_total;
 static uint32_t words;
+static uint32_t dict_size;
 
 static uint8_t opt_flags = OPT_SOURCE_NAME;
 static void (*token_cat)(token_t *RESTRICT token, token_t *RESTRICT token_to_add);
 static char quotes[] = "\"";
 static char space[] = " ";
-static bool is_not_whitespace[256];
-static bool is_not_identifier[256];
+static bool is_not_whitespace[256] ALIGNED(64);
+static bool is_not_identifier[256] ALIGNED(64);
 
 /*
  *  flat tree of dictionary words
@@ -277,7 +278,7 @@ static hash_entry_t *hash_bad_spellings[TABLE_SIZE];
 /*
  *  Kernel printk format specifiers
  */
-static format_t formats[] = {
+static format_t formats[] ALIGNED(64) = {
 	{ "%", 1 },
 	{ "s", 1 },
 	{ "llu", 3 },
@@ -2562,7 +2563,6 @@ static char *printks[] = {
 };
 
 static uint8_t mapping[256] ALIGNED(64);
-static inline get_char_t CONST PURE HOT map(register const get_char_t ch);
 
 static void set_mapping(void)
 {
@@ -2571,7 +2571,6 @@ static void set_mapping(void)
 	for (i = 0; i < SIZEOF_ARRAY(mapping); i++) {
 		mapping[i] = BAD_MAPPING;
 	}
-
 	for (i = 'a'; i <= 'z'; i++) {
 		mapping[i] = i - 'a';
 	}
@@ -2579,9 +2578,9 @@ static void set_mapping(void)
 		mapping[i] = i - 'A';
 	}
 	for (i = '0'; i <= '9'; i++) {
-		mapping[i] = 26 + i - '0';
+		mapping[i] = 26;
 	}
-	mapping['_'] = 36;
+	mapping['_'] = 26;
 }
 
 static inline get_char_t CONST PURE HOT map(register const get_char_t ch)
@@ -2746,6 +2745,7 @@ static inline int read_dictionary(const char *dictfile)
 		while (ptr < dict_end && bptr < buffer_end && *ptr != '\n') {
 			*bptr++ = *ptr++;
 		}
+		dict_size += bptr - buffer;
 		*bptr = '\0';
 		ptr++;
 		words++;
@@ -2930,9 +2930,7 @@ static void HOT token_expand(token_t *t)
 }
 
 /*
- *  Append a single character to the token,
- *  we may run out of space, so this occasionally
- *  adds an extra 1K of token space for long tokens
+ *  Append a single character to the token
  */
 static inline void HOT token_append(register token_t *t, register const get_char_t ch)
 {
@@ -4194,15 +4192,22 @@ int main(int argc, char **argv)
 	dump_bad_spellings();
 
 	printf("\n%" PRIu32 " files scanned\n", files);
-	printf("%" PRIu32 " lines scanned (%.3f"  " Mbytes)\n", lines, (float)bytes_total / (float)(1024 * 1024));
+	printf("%" PRIu32 " lines scanned (%.3f"  " Mbytes)\n",
+		lines, (float)bytes_total / (float)(1024 * 1024));
 	printf("%" PRIu32 " print statements found\n", finds);
-	if (words)
-		printf("%" PRIu32 " words and %td nodes in dictionary heap\n",
-			words, (ptrdiff_t)(word_node_heap_next - word_node_heap));
+	if (words) {
+		size_t nodes = word_node_heap_next - word_node_heap;
+		printf("%" PRIu32 " words and %zd nodes in dictionary heap\n",
+			words, nodes);
+		printf("%" PRIu32 " chars mapped to %zd bytes of heap, ratio=1:%.2f\n",
+			dict_size, nodes * sizeof(word_node_t),
+			(float)nodes * sizeof(word_node_t) / dict_size);
+	}
 	printf("%zu printk style statements being searched\n",
 		SIZEOF_ARRAY(printks));
 	if (bad_spellings)
-		printf("%" PRIu32 " unique bad spellings found (%" PRIu32 " non-unique)\n", bad_spellings, bad_spellings_total);
+		printf("%" PRIu32 " unique bad spellings found (%" PRIu32 " non-unique)\n",
+			bad_spellings, bad_spellings_total);
 	printf("scanned %.2f lines per second\n",
 		FLOAT_CMP(t1, t2) ? 0.0 : (double)lines / (t2 - t1));
 	printf("(kernelscan " VERSION ")\n");
