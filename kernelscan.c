@@ -3056,23 +3056,23 @@ static get_char_t HOT TARGET_CLONES parse_number(parser_t *RESTRICT p, token_t *
 				token_append(t, nextch1);
 				ch = nextch2;
 				ishex = true;
-			} else if (UNLIKELY(nextch2 == PARSER_EOF)) {
-				unget_char(p);
-				token_eos(t);
-				return PARSER_OK;
-			} else {
+			} else if (LIKELY(nextch2 != PARSER_EOF)) {
 				/* Nope */
 				unget_char(p);
 				unget_char(p);
 				token_eos(t);
 				return PARSER_OK;
+			} else {
+				unget_char(p);
+				token_eos(t);
+				return PARSER_OK;
 			}
-		} else if (UNLIKELY(nextch1 == PARSER_EOF)) {
-			token_append(t, ch);
+		} else if (LIKELY(nextch1 != PARSER_EOF)) {
+			unget_char(p);
 			token_eos(t);
 			return PARSER_OK;
 		} else {
-			unget_char(p);
+			token_append(t, ch);
 			token_eos(t);
 			return PARSER_OK;
 		}
