@@ -2857,8 +2857,8 @@ static inline get_char_t HOT get_char(register parser_t *p)
  */
 static inline void HOT unget_char(parser_t *p)
 {
-	if (LIKELY(p->ptr > p->data))
-		p->ptr--;
+	//if (LIKELY(p->ptr > p->data))
+	p->ptr--;
 }
 
 static int HOT CONST PURE cmp_format(const void *RESTRICT p1, const void *RESTRICT p2)
@@ -2918,7 +2918,7 @@ static void token_free(token_t *t)
 
 static void HOT token_expand(token_t *t)
 {
-	/* No more space, add 1K more space */
+	/* No more space, add more space */
 	ptrdiff_t diff = t->ptr - t->token;
 
 	t->len += TOKEN_CHUNK_SIZE;
@@ -2985,8 +2985,6 @@ static get_char_t HOT TARGET_CLONES skip_comments(parser_t *p)
 	register get_char_t ch, nextch;
 
 	nextch = get_char(p);
-	if (UNLIKELY(nextch == PARSER_EOF))
-		return nextch;
 
 	if (nextch == '/') {
 		do {
@@ -3016,6 +3014,8 @@ static get_char_t HOT TARGET_CLONES skip_comments(parser_t *p)
 				return ch;
 		}
 	}
+	if (UNLIKELY(nextch == PARSER_EOF))
+		return nextch;
 
 	/* Not a comment, push back */
 	unget_char(p);
