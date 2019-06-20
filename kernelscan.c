@@ -210,7 +210,7 @@ typedef struct {
  */
 typedef struct hash_entry {
 	struct hash_entry *next;
-	char *token;
+	char token[0];
 } hash_entry_t;
 
 typedef get_char_t (*get_token_action_t)(parser_t *RESTRICT p, token_t *RESTRICT t, register get_char_t ch);
@@ -2758,30 +2758,26 @@ static inline int read_dictionary(const char *dictfile)
 	return 0;
 }
 
-static inline void HOT add_bad_spelling(const char *word)
+static inline void HOT add_bad_spelling(const char *word, const size_t len)
 {
-	register const uint32_t h = djb2a(word);
-	register hash_entry_t *he = hash_bad_spellings[h];
+	register hash_entry_t **head, *he;
 
 	if (find_word(word, printk_nodes, printk_node_heap))
 		return;
 
 	bad_spellings_total++;
-
-	while (he) {
-		if (!strcmp(he->token, word))
+	head = &hash_bad_spellings[djb2a(word)];
+	for (he = *head; he; he = he ->next) {
+		if (!__builtin_strcmp(he->token, word))
 			return;
-		he = he->next;
 	}
-	he = malloc(sizeof(*he));
+	he = malloc(sizeof(*he) + len);
 	if (UNLIKELY(!he))
 		out_of_memory();
 
-	he->token = strdup(word);
-	if (UNLIKELY(!he->token))
-		out_of_memory();
-	he->next = hash_bad_spellings[h];
-	hash_bad_spellings[h] = he;
+	he->next = *head;
+	*head = he;
+	__builtin_memcpy(he->token, word, len);
 	bad_spellings++;
 }
 
@@ -2805,7 +2801,7 @@ static void TARGET_CLONES HOT check_words(token_t *token)
 
 		if (LIKELY(p2 - p1 > 1)) {
 			if (!find_word(p1, word_nodes, word_node_heap))
-				add_bad_spelling(p1);
+				add_bad_spelling(p1, 1 + p2 - p1);
 		}
 		p1 = p2 + 1;
 	}
@@ -4057,8 +4053,6 @@ static void dump_bad_spellings(void)
 		while (he) {
 			hash_entry_t *next = he->next;
 			bad_spellings_sorted[j++] = he->token;
-
-			free(he);
 			he = next;
 		}
 	}
@@ -4066,8 +4060,11 @@ static void dump_bad_spellings(void)
 	qsort(bad_spellings_sorted, j, sizeof(char *), cmpstr);
 
 	for (i = 0; i < bad_spellings; i++) {
+		char *ptr = bad_spellings_sorted[i];
+		register hash_entry_t *he = (hash_entry_t *)(ptr - sizeof(hash_entry_t));
+
 		printf("%s\n", bad_spellings_sorted[i]);
-		free(bad_spellings_sorted[i]);
+		free(he);
 	}
 
 	free(bad_spellings_sorted);
