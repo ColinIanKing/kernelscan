@@ -4062,8 +4062,12 @@ static void dump_bad_spellings(void)
 	for (i = 0; i < bad_spellings; i++) {
 		char *ptr = bad_spellings_sorted[i];
 		register hash_entry_t *he = (hash_entry_t *)(ptr - sizeof(hash_entry_t));
+		register char ch;
 
-		printf("%s\n", bad_spellings_sorted[i]);
+		while ((ch = *(ptr++))) {
+			putchar(ch);
+		}
+		putchar('\n');
 		free(he);
 	}
 
@@ -4108,6 +4112,7 @@ int main(int argc, char **argv)
 {
 	token_t t, line, str;
 	double t1, t2;
+	static char buffer[65536];
 
 	token_cat = token_cat_normal;
 
@@ -4175,6 +4180,9 @@ int main(int argc, char **argv)
 	token_new(&line);
 	token_new(&str);
 
+	fflush(stdout);
+	setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
+
 	t1 = gettime_to_double();
 	while (argc > optind) {
 		parse_path(argv[optind], &t, &line, &str);
@@ -4209,5 +4217,6 @@ int main(int argc, char **argv)
 		FLOAT_CMP(t1, t2) ? 0.0 : (double)lines / (t2 - t1));
 	printf("(kernelscan " VERSION ")\n");
 
+	fflush(stdout);
 	exit(EXIT_SUCCESS);
 }
