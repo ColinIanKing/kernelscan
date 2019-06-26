@@ -4041,9 +4041,10 @@ static int cmpstr(const void *p1, const void *p2)
 static void dump_bad_spellings(void)
 {
 	register size_t i, j;
-	char **bad_spellings_sorted;
+	register char **bad_spellings_sorted;
+	const size_t sz = bad_spellings * sizeof(char *);
 
-	bad_spellings_sorted = calloc(bad_spellings, sizeof(char *));
+	bad_spellings_sorted = malloc(sz);
 	if (!bad_spellings_sorted)
 		out_of_memory();
 
