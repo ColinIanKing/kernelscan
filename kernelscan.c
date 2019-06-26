@@ -4061,14 +4061,15 @@ static void dump_bad_spellings(void)
 	qsort(bad_spellings_sorted, j, sizeof(char *), cmpstr);
 
 	for (i = 0; i < bad_spellings; i++) {
-		char *ptr = bad_spellings_sorted[i];
-		register hash_entry_t *he = (hash_entry_t *)(ptr - sizeof(hash_entry_t));
+		register char *ptr = bad_spellings_sorted[i];
+		hash_entry_t *const he = (hash_entry_t *)(ptr - sizeof(hash_entry_t));
 		register char ch;
 
 		while ((ch = *(ptr++))) {
 			putchar(ch);
 		}
 		putchar('\n');
+
 		free(he);
 	}
 
