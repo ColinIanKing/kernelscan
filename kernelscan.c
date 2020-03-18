@@ -139,6 +139,7 @@
 #endif
 
 static const char dictionary[] = "/usr/share/dict/american-english";
+static const char *dictionary_path = dictionary;
 
 /*
  *  Subset of tokens that we need to intelligently parse the kernel C source
@@ -3847,15 +3848,16 @@ static void show_usage(void)
 {
 	fprintf(stderr, "kernelscan: the fast kernel source message scanner\n\n");
 	fprintf(stderr, "kernelscan [options] path\n");
-	fprintf(stderr, "  -c     check words in dictionary\n");
-	fprintf(stderr, "  -e     strip out C escape sequences\n");
-	fprintf(stderr, "  -f     replace kernel %% format specifiers with a space\n");
-	fprintf(stderr, "  -h     show this help\n");
-	fprintf(stderr, "  -k     same as -ceflsx\n");
-	fprintf(stderr, "  -l     scan all literal strings and not print statements\n");
-	fprintf(stderr, "  -n     find messages with missing \\n newline\n");
-	fprintf(stderr, "  -s     just print literal strings\n");
-	fprintf(stderr, "  -x     exclude the source file name from the output\n");
+	fprintf(stderr, "  -c       check words in dictionary\n");
+	fprintf(stderr, "  -d file  specify dictionary file\n");
+	fprintf(stderr, "  -e       strip out C escape sequences\n");
+	fprintf(stderr, "  -f       replace kernel %% format specifiers with a space\n");
+	fprintf(stderr, "  -h       show this help\n");
+	fprintf(stderr, "  -k       same as -ceflsx\n");
+	fprintf(stderr, "  -l       scan all literal strings and not print statements\n");
+	fprintf(stderr, "  -n       find messages with missing \\n newline\n");
+	fprintf(stderr, "  -s       just print literal strings\n");
+	fprintf(stderr, "  -x       exclude the source file name from the output\n");
 }
 
 static int parse_dir(char *RESTRICT path, const mqd_t mq)
@@ -4115,16 +4117,19 @@ int main(int argc, char **argv)
 	token_t t, line, str;
 	double t1, t2;
 	static char buffer[65536];
-
+	
 	token_cat = token_cat_normal;
 
 	for (;;) {
-		int c = getopt(argc, argv, "cefhklnsx");
+		int c = getopt(argc, argv, "cd:efhklnsx");
 		if (c == -1)
  			break;
 		switch (c) {
 		case 'c':
 			opt_flags |= OPT_CHECK_WORDS;
+			break;
+		case 'd':
+			dictionary_path = optarg;
 			break;
 		case 'e':
 			opt_flags |= OPT_ESCAPE_STRIP;
@@ -4171,9 +4176,9 @@ int main(int argc, char **argv)
 	if (opt_flags & OPT_CHECK_WORDS) {
 		int ret;
 
-		ret = read_dictionary(dictionary);
+		ret = read_dictionary(dictionary_path);
 		if (ret) {
-			fprintf(stderr, "No dictionary found, expecting words in %s\n", dictionary);
+			fprintf(stderr, "No dictionary found, expecting words in %s\n", dictionary_path);
 			exit(EXIT_FAILURE);
 		}
 	}
