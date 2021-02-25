@@ -2968,28 +2968,6 @@ static inline void HOT token_cat_str(
 	token_eos(t);
 }
 
-static get_char_t HOT skip_macros(register parser_t *p)
-{
-	bool continuation = false;
-
-	for (;;) {
-		register get_char_t ch;
-
-		ch = get_char(p);
-		if (ch == '\n') {
-			lines++;
-			lineno++;
-			if (!continuation)
-				return ch;
-			continuation = false;
-		} else if (ch == '\\') {
-			continuation = true;
-		} else if (UNLIKELY(ch == PARSER_EOF))
-			break;
-	}
-	return PARSER_EOF;
-}
-
 /*
  *  Parse C comments and just throw them away
  */
@@ -3034,6 +3012,36 @@ static get_char_t HOT TARGET_CLONES skip_comments(parser_t *p)
 	unget_char(p);
 
 	return PARSER_OK;
+}
+
+static get_char_t HOT skip_macros(register parser_t *p)
+{
+	bool continuation = false;
+
+	for (;;) {
+		register get_char_t ch;
+
+		ch = get_char(p);
+		if (ch == '/') {
+			get_char_t ret = skip_comments(p);
+
+ 			if (ret == PARSER_COMMENT_FOUND)
+				continue;
+        		if (UNLIKELY(ret == PARSER_EOF))
+                		return ret;
+		}
+		if (ch == '\n') {
+			lines++;
+			lineno++;
+			if (!continuation)
+				return ch;
+			continuation = false;
+		} else if (ch == '\\') {
+			continuation = true;
+		} else if (UNLIKELY(ch == PARSER_EOF))
+			break;
+	}
+	return PARSER_EOF;
 }
 
 /*
