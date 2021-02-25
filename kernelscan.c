@@ -2986,7 +2986,6 @@ static get_char_t HOT TARGET_CLONES skip_comments(parser_t *p)
 
 		return PARSER_COMMENT_FOUND;
 	}
-
 	if (LIKELY(nextch == '*')) {
 		for (;;) {
 			ch = get_char(p);
@@ -3022,22 +3021,21 @@ static get_char_t HOT skip_macros(register parser_t *p)
 		register get_char_t ch;
 
 		ch = get_char(p);
-		if (ch == '/') {
+		if (ch == '\n') {
+                        lines++;
+                        lineno++;
+                        if (!continuation)
+                                return ch;
+                        continuation = false;
+		} else if (ch == '\\') {
+			continuation = true;
+		} else if (UNLIKELY(ch == '/')) {
 			get_char_t ret = skip_comments(p);
 
- 			if (ret == PARSER_COMMENT_FOUND)
+			if (LIKELY(ret == PARSER_COMMENT_FOUND))
 				continue;
         		if (UNLIKELY(ret == PARSER_EOF))
                 		return ret;
-		}
-		if (ch == '\n') {
-			lines++;
-			lineno++;
-			if (!continuation)
-				return ch;
-			continuation = false;
-		} else if (ch == '\\') {
-			continuation = true;
 		} else if (UNLIKELY(ch == PARSER_EOF))
 			break;
 	}
@@ -3172,7 +3170,7 @@ static get_char_t HOT parse_identifier(
 /*
  *  Handle escape char deletion when at the end of a literal string,
  *  need to transform:
- * 	"foo\n" -> "foo" 
+ * 	"foo\n" -> "foo"
  * 	"foo\nbar" -> "foo bar"
  *	"foo\n"<whitespaces>"bar" -> "foo "<whitespaces>"bar"
  */
