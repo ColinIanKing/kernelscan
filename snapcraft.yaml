@@ -5,7 +5,9 @@ description: kernelscan parses the kernel source and extracts all the kernel err
 type: app
 grade: stable
 base: core18
+assumes: [snapd2.37]
 confinement: strict
+adopt-info: kernelscan
 
 parts:
     kernelscan:
