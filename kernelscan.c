@@ -3780,6 +3780,16 @@ static get_char_t HOT TARGET_CLONES parse_kernel_message(
 	if (UNLIKELY(get_token(p, t) == PARSER_EOF)) {
 		return PARSER_EOF;
 	}
+
+	/* Skip whitespaces. */
+	if (t->type == TOKEN_WHITE_SPACE) {
+		parse_whitespace(p, t, ' ');
+
+		if (UNLIKELY(get_token(p, t) == PARSER_EOF)) {
+			return PARSER_EOF;
+		}
+	}
+
 	if (t->type != TOKEN_PAREN_OPENED) {
 		for (;;) {
 			if (UNLIKELY(get_token(p, t) == PARSER_EOF))
