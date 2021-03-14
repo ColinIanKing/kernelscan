@@ -17,7 +17,7 @@
 #
 BINDIR=/usr/bin
 
-VERSION=0.3.4
+VERSION=0.3.5
 
 ifeq ($(CC),clang)
 CFLAGS += -O3 -Wall -Wextra -ftree-vectorize
