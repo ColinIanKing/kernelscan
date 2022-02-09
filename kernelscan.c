@@ -2600,6 +2600,7 @@ static inline size_t CONST PURE HOT token_len(register token_t *t)
 	return t->ptr - t->token;
 }
 
+#if 0
 /*
  *  djb2a()
  *	relatively fast string hash
@@ -2614,6 +2615,55 @@ static inline uint32_t TARGET_CLONES CONST PURE HOT djb2a(
                 hash = (hash * 33) ^ c;
 
         return hash & HASH_MASK;
+}
+#endif
+
+/*
+ *  stress_hash_murmur_32_scramble
+ *	helper to scramble bits
+ */
+static inline uint32_t stress_hash_murmur_32_scramble(uint32_t k)
+{
+	k *= 0xcc9e2d51;
+	k = (k << 15) | (k >> 17);
+	k *= 0x1b873593;
+	return k;
+}
+
+/*
+ *  stress_hash_murmur3_32
+ *	32 bit murmur3 hash based on Austin Appleby's
+ *	Murmur3 hash, code derived from example code in
+ *	https://en.wikipedia.org/wiki/MurmurHash
+ */
+uint32_t stress_hash_murmur3_32(const uint8_t *key, size_t len)
+{
+	uint32_t h = len;
+	uint32_t k;
+	register size_t i;
+
+	for (i = len >> 2; i; i--) {
+		(void)memcpy(&k, key, sizeof(k));
+		key += sizeof(k);
+		h ^= stress_hash_murmur_32_scramble(k);
+		h = (h << 13) | (h >> 19);
+		h = h * 5 + 0xe6546b64;
+	}
+
+	k = 0;
+	for (i = len & 3; i; i--) {
+		k <<= 8;
+		k |= key[i - 1];
+	}
+	h ^= stress_hash_murmur_32_scramble(k);
+	h ^= len;
+	h ^= h >> 16;
+	h *= 0x85ebca6b;
+	h ^= h >> 13;
+	h *= 0xc2b2ae35;
+	h ^= h >> 16;
+
+	return h & HASH_MASK;
 }
 
 static int parse_file(char *RESTRICT path, const mqd_t mq);
@@ -2775,7 +2825,7 @@ static inline void HOT add_bad_spelling(const char *word, const size_t len)
 		return;
 
 	bad_spellings_total++;
-	head = &hash_bad_spellings[djb2a(word)];
+	head = &hash_bad_spellings[stress_hash_murmur3_32((const uint8_t *)word, len)];
 	for (he = *head; he; he = he ->next) {
 		if (!__builtin_strcmp(he->token, word))
 			return;
@@ -4290,9 +4340,14 @@ int main(int argc, char **argv)
 	setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
 
 	t1 = gettime_to_double();
-	while (argc > optind) {
-		parse_path(argv[optind], &t, &line, &str);
+	if (argc == optind) {
+		parse_path(".", &t, &line, &str);
 		optind++;
+	} else {
+		while (argc > optind) {
+			parse_path(argv[optind], &t, &line, &str);
+			optind++;
+		}
 	}
 	t2 = gettime_to_double();
 
