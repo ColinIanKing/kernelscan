@@ -2616,7 +2616,6 @@ static inline uint32_t TARGET_CLONES CONST PURE HOT djb2a(
 
         return hash & HASH_MASK;
 }
-#endif
 
 /*
  *  stress_hash_murmur_32_scramble
@@ -2664,6 +2663,38 @@ uint32_t stress_hash_murmur3_32(const uint8_t *key, size_t len)
 	h ^= h >> 16;
 
 	return h & HASH_MASK;
+}
+#endif
+
+static inline uint64_t hash_ror_uint64(const uint64_t x, const uint32_t bits)
+{
+	return (x >> bits) | x << (64 - bits);
+}
+
+/*
+ *  stress_hash_mulxror64()
+ *	mangles 64 bits per iteration on fast path, scaling by the 64 bits
+ *	from the string and partially rolling right to remix bits back into
+ *	the hash. Designed and Implemented Colin Ian King, free to re-use.
+ */
+uint32_t stress_hash_mulxror64(const char *str, const size_t len)
+{
+	register uint64_t hash = len;
+	register size_t i;
+
+	for (i = len >> 3; i; i--) {
+		uint64_t v;
+
+		(void)memcpy(&v, str, sizeof(v));
+		str += sizeof(v);
+		hash *= v;
+		hash ^= hash_ror_uint64(hash, 40);
+	}
+	for (i = len & 7; *str && i; i--) {
+		hash *= (uint8_t)*str++;
+		hash ^= hash_ror_uint64(hash, 5);
+	}
+	return (uint32_t)((hash >> 32) ^ hash) & HASH_MASK;
 }
 
 static int parse_file(char *RESTRICT path, const mqd_t mq);
@@ -2825,7 +2856,7 @@ static inline void HOT add_bad_spelling(const char *word, const size_t len)
 		return;
 
 	bad_spellings_total++;
-	head = &hash_bad_spellings[stress_hash_murmur3_32((const uint8_t *)word, len)];
+	head = &hash_bad_spellings[stress_hash_mulxror64(word, len)];
 	for (he = *head; he; he = he ->next) {
 		if (!__builtin_strcmp(he->token, word))
 			return;
