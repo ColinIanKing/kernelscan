@@ -43,7 +43,7 @@ kernelscan: kernelscan.o Makefile
 	#strip $@
 
 clean:
-	rm -f kernelscan.o kernelscan kernelscan*snap
+	rm -f kernelscan.o kernelscan
 
 install: kernelscan
 	mkdir -p ${DESTDIR}${BINDIR}
