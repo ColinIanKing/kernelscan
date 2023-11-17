@@ -57,6 +57,8 @@
 #define FLOAT_TINY		(0.0000001)
 #define FLOAT_CMP(a, b)		(__builtin_fabs(a - b) < FLOAT_TINY)
 
+#define ALWAYS_INLINE		__attribute__((always_inline))
+
 #define PARSER_OK		(0)
 #define PARSER_COMMENT_FOUND	(1)
 #define PARSER_EOF		(256)
@@ -2588,7 +2590,7 @@ static void set_mapping(void)
 	mapping['_'] = 26;
 }
 
-static inline get_char_t CONST PURE HOT map(register const get_char_t ch)
+static inline ALWAYS_INLINE get_char_t CONST PURE HOT map(register const get_char_t ch)
 {
 	return mapping[ch];
 }
@@ -2596,7 +2598,7 @@ static inline get_char_t CONST PURE HOT map(register const get_char_t ch)
 /*
  *  Get length of token
  */
-static inline size_t CONST PURE HOT token_len(register token_t *t)
+static inline ALWAYS_INLINE size_t CONST PURE HOT token_len(register token_t *t)
 {
 	return t->ptr - t->token;
 }
@@ -2916,7 +2918,7 @@ static double gettime_to_double(void)
 /*
  *  Initialise the parser
  */
-static inline HOT void parser_new(
+static inline ALWAYS_INLINE HOT void parser_new(
 	parser_t *RESTRICT p,
 	unsigned char *RESTRICT data,
 	unsigned char *RESTRICT data_end,
@@ -2931,7 +2933,7 @@ static inline HOT void parser_new(
 /*
  *  Get next character from input stream
  */
-static inline get_char_t HOT get_char(register parser_t *p)
+static inline ALWAYS_INLINE get_char_t HOT get_char(register parser_t *p)
 {
 	if (LIKELY(p->ptr < p->data_end)) {
 		return *(p->ptr++);
@@ -2943,7 +2945,7 @@ static inline get_char_t HOT get_char(register parser_t *p)
  *  Push character back onto the input
  *  stream (in this case, it is a simple FIFO stack
  */
-static inline void HOT unget_char(parser_t *p)
+static inline ALWAYS_INLINE void HOT unget_char(parser_t *p)
 {
 	//if (LIKELY(p->ptr > p->data))
 	p->ptr--;
@@ -2971,10 +2973,12 @@ static int HOT CONST PURE cmp_format(
  */
 static inline void HOT token_clear(token_t *t)
 {
-	t->ptr = t->token;
-	t->token_end = t->token + t->len;
+	register char *ptr = t->token;
+
+	t->ptr = ptr;
+	t->token_end = ptr + t->len;
+	*ptr = '\0';
 	t->type = TOKEN_UNKNOWN;
-	*(t->ptr) = '\0';
 }
 
 /*
