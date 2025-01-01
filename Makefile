@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2010-2021 Canonical, Ltd.
-# Copyright (C) 2021-2023 Colin Ian King.
+# Copyright (C) 2021-2025 Colin Ian King.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -23,7 +23,7 @@ VERSION=0.3.5
 ifeq ($(CC),clang)
 CFLAGS += -O3 -Wall -Wextra -ftree-vectorize
 else
-CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program -fivopts 
+CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program -fivopts
 endif
 
 CFLAGS += -DVERSION='"$(VERSION)"'
