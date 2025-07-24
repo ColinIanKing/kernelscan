@@ -4123,7 +4123,8 @@ static int HOT parse_file(
 
 		if (LIKELY(((len >= 2) && !__builtin_strcmp(path + len - 2, ".c")) ||
 		    ((len >= 2) && !__builtin_strcmp(path + len - 2, ".h")) ||
-		    ((len >= 4) && !__builtin_strcmp(path + len - 4, ".cpp")))) {
+		    ((len >= 4) && !__builtin_strcmp(path + len - 4, ".cpp")) ||
+		    ((len >= 7) && !__builtin_strcmp(path + len - 7, "Kconfig")))) {
 			if (LIKELY(buf.st_size > 0)) {
 				msg_t msg;
 
