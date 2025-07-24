@@ -23,7 +23,8 @@ VERSION=0.3.5
 ifeq ($(CC),clang)
 CFLAGS += -O3 -Wall -Wextra -ftree-vectorize
 else
-CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program -fivopts -fipa-pta -ftree-slp-vectorize -flto=auto
+CFLAGS += -O3 -Wall -Wextra -fipa-pta -ftree-vectorize -fweb -fwhole-program \
+	  -fivopts -fipa-pta -ftree-slp-vectorize -flto=auto  -march=native
 endif
 
 CFLAGS += -DVERSION='"$(VERSION)"'
