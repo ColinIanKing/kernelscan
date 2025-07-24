@@ -266,7 +266,7 @@ static bool is_not_identifier[256] ALIGNED(64);
 /*
  *  flat tree of dictionary words
  */
-static word_node_t word_node_heap[WORD_NODES_HEAP_SIZE];
+static word_node_t word_node_heap[WORD_NODES_HEAP_SIZE] ALIGNED(64);
 static word_node_t *word_nodes = &word_node_heap[0];
 static word_node_t *word_node_heap_next = &word_node_heap[1];
 
@@ -280,7 +280,7 @@ static word_node_t *printk_node_heap_next = &printk_node_heap[1];
 /*
  *  hash table of bad spellings
  */
-static hash_entry_t *hash_bad_spellings[TABLE_SIZE];
+static hash_entry_t *hash_bad_spellings[TABLE_SIZE] ALIGNED(64);
 
 /*
  *  Kernel printk format specifiers
@@ -388,7 +388,7 @@ static format_t formats[] ALIGNED(64) = {
  *  various printk like functions to populate the
  *  hash_printks hash table
  */
-static char *printks[] = {
+static const char * const printks[] = {
 	"AA_BUG",
 	"AA_DEBUG",
 	"AA_ERROR",
@@ -2677,7 +2677,7 @@ uint32_t stress_hash_murmur3_32(const uint8_t *key, size_t len)
 }
 #endif
 
-static inline uint64_t hash_ror_uint64(const uint64_t x, const uint32_t bits)
+static inline ALWAYS_INLINE uint64_t hash_ror_uint64(const uint64_t x, const uint32_t bits)
 {
 	return (x >> bits) | x << (64 - bits);
 }
@@ -2696,7 +2696,7 @@ uint32_t stress_hash_mulxror64(const char *str, const size_t len)
 	for (i = len >> 3; i; i--) {
 		uint64_t v;
 
-		(void)memcpy(&v, str, sizeof(v));
+		(void)__builtin_memcpy(&v, str, sizeof(v));
 		str += sizeof(v);
 		hash *= v;
 		hash ^= hash_ror_uint64(hash, 40);
@@ -2737,7 +2737,7 @@ static inline index_t *index_unpack_ptr(
 }
 
 static inline void HOT add_word(
-	register char *RESTRICT str,
+	register const char *RESTRICT str,
 	register word_node_t *RESTRICT node,
 	register word_node_t *RESTRICT node_heap,
 	register word_node_t **RESTRICT node_heap_next,
@@ -2841,7 +2841,7 @@ static inline int read_dictionary(const char *dictfile)
 	dict_end = dict + buf.st_size;
 
 	while (ptr < dict_end) {
-		char *bptr = buffer;
+		register char *bptr = buffer;
 
 		while (ptr < dict_end && bptr < buffer_end && *ptr != '\n') {
 			*bptr++ = *ptr++;
@@ -2979,7 +2979,7 @@ static int HOT CONST PURE cmp_format(
 /*
  *  Clear the token ready for re-use
  */
-static inline void HOT token_clear(token_t *t)
+static inline ALWAYS_INLINE void HOT token_clear(token_t *t)
 {
 	register char *ptr = t->token;
 
@@ -3034,7 +3034,7 @@ static void HOT token_expand(token_t *t)
 /*
  *  Append a single character to the token
  */
-static inline void HOT token_append(
+static inline ALWAYS_INLINE void HOT token_append(
 	register token_t *t,
 	register const get_char_t ch)
 {
@@ -3046,12 +3046,12 @@ static inline void HOT token_append(
 	}
 }
 
-static inline void HOT token_eos(token_t *t)
+static inline ALWAYS_INLINE void HOT token_eos(token_t *t)
 {
 	*(t->ptr) = '\0';
 }
 
-static inline void HOT token_cat_str(
+static inline ALWAYS_INLINE void HOT token_cat_str(
 	register token_t *RESTRICT t,
 	register const char *RESTRICT str)
 {
