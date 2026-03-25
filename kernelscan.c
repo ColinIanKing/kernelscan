@@ -2955,8 +2955,12 @@ static inline ALWAYS_INLINE get_char_t HOT get_char(register parser_t *p)
  */
 static inline ALWAYS_INLINE void HOT unget_char(parser_t *p)
 {
-	//if (LIKELY(p->ptr > p->data))
-	p->ptr--;
+	if (LIKELY(p->ptr > p->data))
+		p->ptr--;
+	else {
+		printf("OOF!\n");
+		exit(1);
+	}
 }
 
 static int HOT CONST PURE cmp_format(
@@ -3253,7 +3257,8 @@ static get_char_t HOT parse_identifier(
 		register uint8_t ch8 = (uint8_t)ch;
 
 		if (UNLIKELY(is_not_identifier[ch8])) {
-			unget_char(p);
+			if (ch != PARSER_EOF)
+				unget_char(p);
 			token_eos(t);
 			return PARSER_OK;
 		}
